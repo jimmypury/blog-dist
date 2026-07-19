@@ -139,9 +139,20 @@
       : container.getAttribute('data-giscus-dark-theme') || 'dark';
   }
 
+  function getCurrentTheme() {
+    return root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  }
+
   function setGiscusTheme(theme) {
+    var giscusTheme = getGiscusTheme(theme);
+    var script = document.querySelector('#giscus_thread script[src="https://giscus.app/client.js"]');
     var container = document.querySelector('.giscus');
     var iframe = document.querySelector('iframe.giscus-frame');
+
+    if (script) {
+      script.setAttribute('data-theme', giscusTheme);
+    }
+
     if (!iframe || !iframe.contentWindow) return;
 
     if (container) {
@@ -151,7 +162,7 @@
     iframe.contentWindow.postMessage({
       giscus: {
         setConfig: {
-          theme: getGiscusTheme(theme)
+          theme: giscusTheme
         }
       }
     }, 'https://giscus.app');
@@ -163,7 +174,35 @@
     }, 260);
   }
 
+  function watchLazyGiscus() {
+    var thread = document.getElementById('giscus_thread');
+    if (!thread || typeof MutationObserver !== 'function') return;
+
+    function syncIframe(iframe) {
+      if (!iframe || iframe.getAttribute('data-theme-sync-bound') === 'true') return;
+
+      iframe.setAttribute('data-theme-sync-bound', 'true');
+      iframe.addEventListener('load', function() {
+        setGiscusTheme(getCurrentTheme());
+      });
+      setGiscusTheme(getCurrentTheme());
+    }
+
+    var observer = new MutationObserver(function() {
+      var iframe = thread.querySelector('iframe.giscus-frame');
+
+      setGiscusTheme(getCurrentTheme());
+      if (iframe) {
+        syncIframe(iframe);
+      }
+    });
+
+    observer.observe(thread, { childList: true, subtree: true });
+    syncIframe(thread.querySelector('iframe.giscus-frame'));
+  }
+
   setTheme(getStoredTheme() || root.getAttribute('data-theme') || 'dark');
+  watchLazyGiscus();
 
   if (menuToggle) {
     menuToggle.addEventListener('click', function() {
@@ -173,7 +212,7 @@
 
   if (themeToggle) {
     themeToggle.addEventListener('click', function() {
-      var currentTheme = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+      var currentTheme = getCurrentTheme();
       var nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
       setTheme(nextTheme);
