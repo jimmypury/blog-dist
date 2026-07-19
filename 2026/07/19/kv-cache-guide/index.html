@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang=zh>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="阅读目标：这篇文章讲清楚 KV-Cache 这一个核心概念：  为什么要有 KV-Cache 它到底存什么 它有多大（痛点） 为什么它是端侧 LLM 的命门 围绕它的优化技术   搞清楚 KV-Cache，端侧 LLM 优化一大半技术（PagedAttention &#x2F; KV 量化 &#x2F; StreamingLLM &#x2F; GQA &#x2F; MLA）就都懂了">
+<meta property="og:type" content="article">
+<meta property="og:title" content="KV-Cache 这一个核心概念">
+<meta property="og:url" content="https://blog.jimmyho.net/2026/07/19/kv-cache-guide/">
+<meta property="og:site_name" content="Jimmy&#39;s Blog">
+<meta property="og:description" content="阅读目标：这篇文章讲清楚 KV-Cache 这一个核心概念：  为什么要有 KV-Cache 它到底存什么 它有多大（痛点） 为什么它是端侧 LLM 的命门 围绕它的优化技术   搞清楚 KV-Cache，端侧 LLM 优化一大半技术（PagedAttention &#x2F; KV 量化 &#x2F; StreamingLLM &#x2F; GQA &#x2F; MLA）就都懂了">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-07-19T06:41:00.000Z">
+<meta property="article:modified_time" content="2026-07-19T06:41:00.000Z">
+<meta property="article:author" content="Jimmy Ho">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="KV-Cache">
+<meta property="article:tag" content="LLM">
+<meta property="article:tag" content="Transformer">
+<meta property="article:tag" content="端侧推理">
+<meta name="twitter:card" content="summary">
+    
+    
+    
+      <link rel="canonical" href="https://blog.jimmyho.net/2026/07/19/kv-cache-guide/">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>KV-Cache 这一个核心概念</title>
+    <script>
+      (function() {
+        var theme = 'dark';
+        try {
+          theme = localStorage.getItem('cactus-theme') || 'dark';
+        } catch (error) {}
+        document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+      }());
+    </script>
+    <!-- async scripts -->
+    <!-- Google Analytics -->
+
+
+    <!-- Umami Analytics -->
+
+
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- rss -->
+    
+    
+	<!-- mathjax -->
+	
+		<script type="text/x-mathjax-config">
+		  MathJax.Hub.Config({
+			tex2jax: {
+			  skipTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
+			  inlineMath: [['$','$']]
+			}
+		  });
+		</script>
+		<script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-MML-AM_CHTML' async></script>
+	
+<meta name="generator" content="Hexo 8.1.2"><!-- post-notices:style -->
+<style>
+.post-notice {
+  margin: 0 0 1.2em;
+  padding: 0.85em 1em;
+  border-left: 4px solid #d97706;
+  background: #fff7ed;
+  color: #7c2d12;
+  line-height: 1.7;
+}
+.post-notice p {
+  margin: 0;
+}
+.post-notice + .post-notice {
+  margin-top: -0.45em;
+}
+</style>
+</head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  
+  <div id="toc">
+    <ol class="toc">
+      <li class="toc-item toc-level-1 toc-post-title">
+        <a class="toc-link" href="#post-title"><span class="toc-text">KV-Cache 这一个核心概念</span></a>
+        
+          <div class="toc-post-children">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#1-%E5%85%88%E5%9B%9E%E5%BF%86-LLM-%E6%98%AF%E6%80%8E%E4%B9%88%E2%80%9D%E7%94%9F%E6%88%90%E2%80%9D%E6%96%87%E5%AD%97%E7%9A%84"><span class="toc-number">1.</span> <span class="toc-text">1. 先回忆 LLM 是怎么”生成”文字的</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-%E4%B8%8D%E7%94%A8-KV-Cache-%E4%BC%9A%E6%80%8E%E6%A0%B7%E2%80%94%E2%80%94%E9%87%8D%E5%A4%8D%E8%AE%A1%E7%AE%97%E7%9A%84%E5%A4%A7%E5%9D%91"><span class="toc-number">2.</span> <span class="toc-text">2. 不用 KV-Cache 会怎样——重复计算的大坑</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%94%A8%E4%B8%80%E4%B8%AA%E5%85%B7%E4%BD%93%E4%BE%8B%E5%AD%90%E7%9C%8B"><span class="toc-number">2.1.</span> <span class="toc-text">用一个具体例子看</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#3-KV-Cache-%E7%9A%84%E6%A0%B8%E5%BF%83%E6%80%9D%E6%83%B3%E2%80%94%E2%80%94%E2%80%9C%E7%AE%97%E8%BF%87%E4%B8%80%E6%AC%A1%E5%B0%B1%E8%AE%B0%E4%B8%8B%E6%9D%A5%E2%80%9D"><span class="toc-number">3.</span> <span class="toc-text">3. KV-Cache 的核心思想——“算过一次就记下来”</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%9C%89%E4%BA%86-KV-Cache-%E4%B9%8B%E5%90%8E%E7%9A%84%E6%B5%81%E7%A8%8B"><span class="toc-number">3.1.</span> <span class="toc-text">有了 KV-Cache 之后的流程</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E6%89%93%E4%B8%AA%E6%AF%94%E6%96%B9"><span class="toc-number">3.2.</span> <span class="toc-text">打个比方</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-KV-Cache-%E9%87%8C%E5%85%B7%E4%BD%93%E5%AD%98%E4%BB%80%E4%B9%88"><span class="toc-number">4.</span> <span class="toc-text">4. KV-Cache 里具体存什么</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E5%8F%AA%E5%AD%98-K-V%EF%BC%8C%E4%B8%8D%E5%AD%98-Q"><span class="toc-number">4.1.</span> <span class="toc-text">为什么只存 K, V，不存 Q</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#KV-Cache-%E7%9A%84%E5%BD%A2%E7%8A%B6"><span class="toc-number">4.2.</span> <span class="toc-text">KV-Cache 的形状</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#5-KV-Cache-%E5%88%B0%E5%BA%95%E5%A4%9A%E5%A4%A7%EF%BC%88%E7%97%9B%E7%82%B9%E6%9D%A5%E4%BA%86%EF%BC%89"><span class="toc-number">5.</span> <span class="toc-text">5. KV-Cache 到底多大（痛点来了）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Qwen-7B-%E7%9A%84%E4%BE%8B%E5%AD%90"><span class="toc-number">5.1.</span> <span class="toc-text">Qwen-7B 的例子</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%AF%B9%E6%AF%94%E6%9D%83%E9%87%8D%E5%A4%A7%E5%B0%8F"><span class="toc-number">5.2.</span> <span class="toc-text">对比权重大小</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#6-%E4%B8%BA%E4%BB%80%E4%B9%88-KV-Cache-%E6%98%AF%E7%AB%AF%E4%BE%A7-LLM-%E7%9A%84%E5%91%BD%E9%97%A8"><span class="toc-number">6.</span> <span class="toc-text">6. 为什么 KV-Cache 是端侧 LLM 的命门</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#6-1-%E5%86%85%E5%AD%98%E5%91%BD%E9%97%A8"><span class="toc-number">6.1.</span> <span class="toc-text">6.1 内存命门</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-2-%E5%B8%A6%E5%AE%BD%E5%91%BD%E9%97%A8%EF%BC%88%E6%9B%B4%E5%85%B3%E9%94%AE%EF%BC%89"><span class="toc-number">6.2.</span> <span class="toc-text">6.2 带宽命门（更关键）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-3-%E5%85%B7%E4%BD%93%E6%84%9F%E5%8F%97%E4%B8%80%E4%B8%8B%E9%80%9F%E5%BA%A6%E4%B8%8A%E9%99%90"><span class="toc-number">6.3.</span> <span class="toc-text">6.3 具体感受一下速度上限</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#7-KV-Cache-%E8%A1%8D%E7%94%9F%E7%9A%84%E4%BC%98%E5%8C%96%E6%8A%80%E6%9C%AF"><span class="toc-number">7.</span> <span class="toc-text">7. KV-Cache 衍生的优化技术</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#7-1-%E5%87%8F%E5%B0%8F-KV-Cache-%E6%9C%AC%E8%BA%AB"><span class="toc-number">7.1.</span> <span class="toc-text">7.1 减小 KV-Cache 本身</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-2-%E8%81%AA%E6%98%8E%E5%9C%B0%E7%AE%A1%E7%90%86-KV-Cache"><span class="toc-number">7.2.</span> <span class="toc-text">7.2 聪明地管理 KV-Cache</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-3-%E8%AF%BB-KV-%E6%97%B6%E5%B0%91%E8%AF%BB%E4%B8%80%E7%82%B9"><span class="toc-number">7.3.</span> <span class="toc-text">7.3 读 KV 时少读一点</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#8-%E4%B8%80%E5%8F%A5%E8%AF%9D%E6%80%BB%E7%BB%93"><span class="toc-number">8.</span> <span class="toc-text">8. 一句话总结</span></a></li></ol>
+          </div>
+        
+      </li>
+    </ol>
+  </div>
+</div>
+
+    
+    <div class="content index py4  post-content-shell">
+        
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 id="post-title" class="posttitle p-name" itemprop="name headline">
+        KV-Cache 这一个核心概念
+    </h1>
+
+
+    <div class="meta">
+      <span class="author p-author h-card" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span class="p-name" itemprop="name">Jimmy Ho</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2026-07-19T06:41:00.000Z" class="dt-published" itemprop="datePublished">2026-07-19</time>
+        
+        (Updated: <time datetime="2026-07-19T06:41:00.000Z" class="dt-updated" itemprop="dateModified">2026-07-19</time>)
+        
+      
+    </div>
+
+
+      
+    <div class="article-category">
+        <i class="fa-solid fa-archive"></i>
+        <a class="category-link" href="/categories/%E8%AE%A1%E7%AE%97%E6%9C%BA/">计算机</a>
+    </div>
+
+
+      
+    <div class="article-tag">
+        <i class="fa-solid fa-tag"></i>
+        <a class="p-category" href="/tags/AI/" rel="tag">AI</a>, <a class="p-category" href="/tags/KV-Cache/" rel="tag">KV-Cache</a>, <a class="p-category" href="/tags/LLM/" rel="tag">LLM</a>, <a class="p-category" href="/tags/Transformer/" rel="tag">Transformer</a>, <a class="p-category" href="/tags/%E7%AB%AF%E4%BE%A7%E6%8E%A8%E7%90%86/" rel="tag">端侧推理</a>
+    </div>
+
+
+    </div>
+  </header>
+  
+
+  <div class="content e-content" itemprop="articleBody">
+    <!-- post-notices:start -->
+<div class="note note-warning post-notice post-notice-ai">
+  <p>本文由 AI 生成，内容可能存在错误或不准确之处，请结合可靠来源核验后再作参考。</p>
+</div>
+<!-- post-notices:end -->
+<blockquote class="markdown-alert markdown-alert-note"><p class="markdown-alert-title">NOTE</p><p><strong>阅读目标</strong>：这篇文章讲清楚 KV-Cache 这一个核心概念：</p>
+<ul>
+<li>为什么要有 KV-Cache</li>
+<li>它到底存什么</li>
+<li>它有多大（痛点）</li>
+<li>为什么它是端侧 LLM 的命门</li>
+<li>围绕它的优化技术</li>
+</ul>
+</blockquote>
+<p>搞清楚 KV-Cache，端侧 LLM 优化一大半技术（PagedAttention &#x2F; KV 量化 &#x2F; StreamingLLM &#x2F; GQA &#x2F; MLA）就都懂了。</p>
+<span id="more"></span>
+
+<hr>
+<h2 id="1-先回忆-LLM-是怎么”生成”文字的"><a href="#1-先回忆-LLM-是怎么”生成”文字的" class="headerlink" title="1. 先回忆 LLM 是怎么”生成”文字的"></a>1. 先回忆 LLM 是怎么”生成”文字的</h2><p>LLM 生成文字<strong>不是一次性吐出整句话</strong>，而是<strong>一个字一个字</strong>地生成。每次生成一个字（token）都要做一遍完整推理。</p>
+<p>比如用户问：”<strong>今天天气</strong>“，模型要回答：”<strong>真好</strong>“：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">步骤 1: 输入&quot;今天天气&quot;      → 模型吐出&quot;真&quot;     → 输出：&quot;今天天气真&quot;</span><br><span class="line">步骤 2: 输入&quot;今天天气真&quot;    → 模型吐出&quot;好&quot;     → 输出：&quot;今天天气真好&quot;</span><br><span class="line">步骤 3: 输入&quot;今天天气真好&quot;  → 模型吐出&quot;!&quot;     → 输出：&quot;今天天气真好!&quot;</span><br><span class="line">步骤 4: 输入&quot;今天天气真好!&quot; → 模型吐出 &lt;END&gt; → 生成结束</span><br></pre></td></tr></table></figure>
+
+<p><strong>每一步都要把”整串历史”重新喂进去跑一遍</strong>。这就是 LLM 的”自回归生成”。</p>
+<hr>
+<h2 id="2-不用-KV-Cache-会怎样——重复计算的大坑"><a href="#2-不用-KV-Cache-会怎样——重复计算的大坑" class="headerlink" title="2. 不用 KV-Cache 会怎样——重复计算的大坑"></a>2. 不用 KV-Cache 会怎样——重复计算的大坑</h2><p>Attention 机制里有三个矩阵 Q、K、V：</p>
+<p>$$<br>\begin{aligned}<br>Q &amp;&#x3D; XW_Q, \\<br>K &amp;&#x3D; XW_K, \\<br>V &amp;&#x3D; XW_V.<br>\end{aligned}<br>$$</p>
+<p><strong>关键事实</strong>：在因果注意力中，历史 token 在每一层对应的 $K$ 和 $V$ 一旦计算完成，后续追加的新 token 就不会再改变它们。也就是说：</p>
+<blockquote class="markdown-alert markdown-alert-important"><p class="markdown-alert-title">IMPORTANT</p><p>第 5 个 token 的 $K$ 和 $V$，从它生成的那一刻开始，到整个序列结束都不会改变。</p>
+</blockquote>
+<p>但如果不用 KV-Cache，会发生什么？</p>
+<h3 id="用一个具体例子看"><a href="#用一个具体例子看" class="headerlink" title="用一个具体例子看"></a>用一个具体例子看</h3><p>假设我们生成一句 10 个字的话：</p>
+<table>
+<thead>
+<tr>
+<th>生成第几字</th>
+<th>输入</th>
+<th>要算什么 K&#x2F;V</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>第 1 字</td>
+<td>$[1]$</td>
+<td>1 个 token 的 K, V</td>
+</tr>
+<tr>
+<td>第 2 字</td>
+<td>$[1,2]$</td>
+<td><strong>重新算</strong> 1, 2 两个 token 的 K, V</td>
+</tr>
+<tr>
+<td>第 3 字</td>
+<td>$[1,2,3]$</td>
+<td><strong>重新算</strong> 1, 2, 3 三个 token 的 K, V</td>
+</tr>
+<tr>
+<td>第 4 字</td>
+<td>$[1,2,3,4]$</td>
+<td><strong>重新算</strong> 1-4 四个 token 的 K, V</td>
+</tr>
+<tr>
+<td>…</td>
+<td>…</td>
+<td>…</td>
+</tr>
+<tr>
+<td>第 10 字</td>
+<td>$[1,2,\ldots,10]$</td>
+<td><strong>重新算</strong> 10 个 token 的 K, V</td>
+</tr>
+</tbody></table>
+<p>总计算量为：</p>
+<p>$$<br>1+2+3+\cdots+10&#x3D;\frac{10\times11}{2}&#x3D;55.<br>$$</p>
+<p>但这 55 次里，<strong>token 1 的 K&#x2F;V 被算了 10 遍，token 2 被算了 9 遍</strong>，……全都是<strong>一模一样的重复劳动</strong>。</p>
+<p>生成 $N$ 个 token 时，总计算复杂度为 $O(N^2)$。生成 1000 个 token，相当于白白多算约 50 万次。</p>
+<blockquote class="markdown-alert markdown-alert-warning"><p class="markdown-alert-title">WARNING</p><p>同一个 token 的 $K$、$V$ 被反复重算几十甚至上百次，而结果完全相同。这是巨大的浪费。</p>
+</blockquote>
+<hr>
+<h2 id="3-KV-Cache-的核心思想——“算过一次就记下来”"><a href="#3-KV-Cache-的核心思想——“算过一次就记下来”" class="headerlink" title="3. KV-Cache 的核心思想——“算过一次就记下来”"></a>3. KV-Cache 的核心思想——“算过一次就记下来”</h2><p>既然 K 和 V <strong>一旦算出来就不变</strong>，那<strong>把它们存起来</strong>，下次要用时直接读，就不用重算了。</p>
+<p>这就是 KV-Cache：<strong>一个专门存历史 K 和 V 的内存区域</strong>。</p>
+<h3 id="有了-KV-Cache-之后的流程"><a href="#有了-KV-Cache-之后的流程" class="headerlink" title="有了 KV-Cache 之后的流程"></a>有了 KV-Cache 之后的流程</h3><table>
+<thead>
+<tr>
+<th>生成第几字</th>
+<th>对新 token 做什么</th>
+<th>对历史 token 做什么</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>第 1 字</td>
+<td>算它的 K, V，<strong>存进 KV-Cache</strong></td>
+<td>无</td>
+</tr>
+<tr>
+<td>第 2 字</td>
+<td>算<strong>新 token</strong> 的 K, V，追加进 KV-Cache</td>
+<td><strong>从 KV-Cache 读</strong>前面的 K, V</td>
+</tr>
+<tr>
+<td>第 3 字</td>
+<td>算<strong>新 token</strong> 的 K, V，追加进 KV-Cache</td>
+<td><strong>从 KV-Cache 读</strong>前面的 K, V</td>
+</tr>
+<tr>
+<td>…</td>
+<td>…</td>
+<td>…</td>
+</tr>
+<tr>
+<td>第 N 字</td>
+<td>算<strong>新 token</strong> 的 K, V，追加</td>
+<td><strong>从 KV-Cache 读</strong>前面 N-1 个</td>
+</tr>
+</tbody></table>
+<p>总计算量变为：</p>
+<p>$$<br>\underbrace{1+1+\cdots+1}_{N\text{ 项}}&#x3D;N.<br>$$</p>
+<p>计算复杂度从 $O(N^2)$ 降到 $O(N)$。生成 1000 个 token 时，只需计算 1000 次 $K&#x2F;V$，而不是约 50 万次。</p>
+<h3 id="打个比方"><a href="#打个比方" class="headerlink" title="打个比方"></a>打个比方</h3><blockquote class="markdown-alert markdown-alert-tip"><p class="markdown-alert-title">TIP</p><p><strong>不用 KV-Cache</strong>，就像每写一个字都把前面所有字<strong>重新抄一遍</strong>，然后才写新字。<br><strong>使用 KV-Cache</strong>，则可以直接查看稿纸上已经写好的内容，只需专心写下一个字。</p>
+</blockquote>
+<hr>
+<h2 id="4-KV-Cache-里具体存什么"><a href="#4-KV-Cache-里具体存什么" class="headerlink" title="4. KV-Cache 里具体存什么"></a>4. KV-Cache 里具体存什么</h2><p>很多人会疑惑：”为什么叫 KV-Cache 不叫 <strong>Q</strong>KV-Cache？为什么不存 Q？”</p>
+<h3 id="为什么只存-K-V，不存-Q"><a href="#为什么只存-K-V，不存-Q" class="headerlink" title="为什么只存 K, V，不存 Q"></a>为什么只存 K, V，不存 Q</h3><p>回头看 Attention 公式：</p>
+<p>$$<br>\operatorname{Attention}_i<br>&#x3D;\operatorname{softmax}\left(\frac{Q_iK^\mathsf{T}}{\sqrt{d}}\right)V.<br>$$</p>
+<ul>
+<li><strong>Q</strong>：只当前这个字的 Q 要参与计算。下一个字会有自己的 Q，<strong>旧的 Q 扔了就扔了，没人用</strong></li>
+<li><strong>K, V</strong>：<strong>所有历史 token 的 K 和 V 都要参与</strong>当前字的 Attention 计算</li>
+</ul>
+<p>所以只需要 cache K 和 V。</p>
+<h3 id="KV-Cache-的形状"><a href="#KV-Cache-的形状" class="headerlink" title="KV-Cache 的形状"></a>KV-Cache 的形状</h3><p>每一<strong>层</strong>、每一个<strong>head</strong>（注意力头）都要存：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">KV-Cache 结构：</span><br><span class="line">├── 层 1</span><br><span class="line">│   ├── Head 0: [K: N 个 token × d 维向量, V: N 个 token × d 维向量]</span><br><span class="line">│   ├── Head 1: [K: ..., V: ...]</span><br><span class="line">│   ├── ...</span><br><span class="line">│   └── Head H-1</span><br><span class="line">├── 层 2</span><br><span class="line">│   ├── ...</span><br><span class="line">├── ...</span><br><span class="line">└── 层 L-1</span><br></pre></td></tr></table></figure>
+
+<p>KV-Cache 总大小的公式为：</p>
+<p>$$<br>M_{\mathrm{KV}}&#x3D;2LHNd\cdot b.<br>$$</p>
+<p>其中：</p>
+<ul>
+<li>$2$ 表示 $K$ 和 $V$ 两份缓存</li>
+<li>$L$ 表示 Transformer 层数</li>
+<li>$H$ 表示 KV 注意力头数</li>
+<li>$N$ 表示当前序列长度</li>
+<li>$d$ 表示每个 head 的向量维度</li>
+<li>$b$ 表示每个元素占用的字节数</li>
+</ul>
+<hr>
+<h2 id="5-KV-Cache-到底多大（痛点来了）"><a href="#5-KV-Cache-到底多大（痛点来了）" class="headerlink" title="5. KV-Cache 到底多大（痛点来了）"></a>5. KV-Cache 到底多大（痛点来了）</h2><h3 id="Qwen-7B-的例子"><a href="#Qwen-7B-的例子" class="headerlink" title="Qwen-7B 的例子"></a>Qwen-7B 的例子</h3><p>参数为 $L&#x3D;32$ 层、$H&#x3D;32$ 个 KV head、$d&#x3D;128$ 维，并使用 FP16（$b&#x3D;2$ 字节）。</p>
+<table>
+<thead>
+<tr>
+<th>序列长度 N</th>
+<th>KV-Cache 大小</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>512</td>
+<td>256 MB</td>
+</tr>
+<tr>
+<td>2,048</td>
+<td><strong>1 GB</strong></td>
+</tr>
+<tr>
+<td>8,192</td>
+<td><strong>4 GB</strong></td>
+</tr>
+<tr>
+<td>32,768</td>
+<td><strong>16 GB</strong></td>
+</tr>
+<tr>
+<td>131,072</td>
+<td><strong>64 GB</strong></td>
+</tr>
+</tbody></table>
+<blockquote class="markdown-alert markdown-alert-warning"><p class="markdown-alert-title">WARNING</p><p>**这是个惊人的数字。**Qwen-7B 权重经 W4 量化后约为 3.5 GB，而 KV-Cache 在长上下文下甚至比权重还大。手机通常只有 8–16 GB 内存，还需要为 OS 和 App 预留空间。</p>
+</blockquote>
+<h3 id="对比权重大小"><a href="#对比权重大小" class="headerlink" title="对比权重大小"></a>对比权重大小</h3><table>
+<thead>
+<tr>
+<th>模型</th>
+<th>权重大小（W4）</th>
+<th>KV-Cache 大小（8K 上下文，FP16）</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Qwen-3B</td>
+<td>~1.5 GB</td>
+<td>~2 GB</td>
+</tr>
+<tr>
+<td>Qwen-7B</td>
+<td>~3.5 GB</td>
+<td>~4 GB</td>
+</tr>
+<tr>
+<td>Qwen-14B</td>
+<td>~7 GB</td>
+<td>~8 GB</td>
+</tr>
+</tbody></table>
+<p>两者基本是 $1:1$ 的规模，因此端侧 LLM 的实际内存需求近似为：</p>
+<p>$$<br>M_{\mathrm{total}}\approx M_{\mathrm{weights}}+M_{\mathrm{KV}}.<br>$$</p>
+<hr>
+<h2 id="6-为什么-KV-Cache-是端侧-LLM-的命门"><a href="#6-为什么-KV-Cache-是端侧-LLM-的命门" class="headerlink" title="6. 为什么 KV-Cache 是端侧 LLM 的命门"></a>6. 为什么 KV-Cache 是端侧 LLM 的命门</h2><h3 id="6-1-内存命门"><a href="#6-1-内存命门" class="headerlink" title="6.1 内存命门"></a>6.1 内存命门</h3><p>手机内存本来就小（8-16GB，还要和 OS 抢），KV-Cache 一涨，很容易 OOM（out of memory）。</p>
+<h3 id="6-2-带宽命门（更关键）"><a href="#6-2-带宽命门（更关键）" class="headerlink" title="6.2 带宽命门（更关键）"></a>6.2 带宽命门（更关键）</h3><p>Decode 阶段每吐一个 token，要做什么？</p>
+<ul>
+<li>读完整权重一次：~ 3.5GB（W4）</li>
+<li><strong>读完整 KV-Cache 一次</strong>：~ 4GB（8K 上下文）</li>
+<li>做几亿次乘加（其实很少）</li>
+<li>写回 1 个 token 的新 K&#x2F;V 到 KV-Cache（几十 KB）</li>
+</ul>
+<p><strong>核心观察</strong>：</p>
+<ul>
+<li>计算量<strong>极少</strong>（一个 token 的 Attention 而已）</li>
+<li>数据搬运量<strong>巨大</strong>（~ 7.5GB）</li>
+<li><strong>典型的 memory-bound</strong></li>
+</ul>
+<p>也就是说，<strong>decode 的速度完全由”每 token 要读多少字节”决定</strong>。KV-Cache 占的读带宽几乎和权重一样多。</p>
+<h3 id="6-3-具体感受一下速度上限"><a href="#6-3-具体感受一下速度上限" class="headerlink" title="6.3 具体感受一下速度上限"></a>6.3 具体感受一下速度上限</h3><p>假设手机 DDR 带宽是 50 GB&#x2F;s：</p>
+<ul>
+<li>每个 token 要读 7.5 GB 的数据</li>
+<li>理论最大速度约为 $50&#x2F;7.5\approx6.7\ \text{tok&#x2F;s}$</li>
+</ul>
+<p><strong>就算你的 NPU 算力无穷强，DDR 读 KV 这一步就把你限死在 6-7 tok&#x2F;s</strong>。想更快，<strong>必须想办法少读点数据</strong>。这就是为什么 KV-Cache 优化技术如此多。</p>
+<hr>
+<h2 id="7-KV-Cache-衍生的优化技术"><a href="#7-KV-Cache-衍生的优化技术" class="headerlink" title="7. KV-Cache 衍生的优化技术"></a>7. KV-Cache 衍生的优化技术</h2><p>理解了 KV-Cache 的重要性，下面这些技术就都好懂了——<strong>全部是围绕”怎么让 KV-Cache 小一点、快一点、共享一点”</strong>。</p>
+<h3 id="7-1-减小-KV-Cache-本身"><a href="#7-1-减小-KV-Cache-本身" class="headerlink" title="7.1 减小 KV-Cache 本身"></a>7.1 减小 KV-Cache 本身</h3><table>
+<thead>
+<tr>
+<th>技术</th>
+<th>思路</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>KV 量化（INT8 &#x2F; INT4）</strong></td>
+<td>把 K 和 V 压缩，FP16 → INT4 直接省 4 倍</td>
+</tr>
+<tr>
+<td><strong>GQA（Grouped Query Attention）</strong></td>
+<td>多个 Q head 共享 K&#x2F;V head，H 减 4-8 倍</td>
+</tr>
+<tr>
+<td><strong>MQA（Multi-Query Attention）</strong></td>
+<td>所有 Q 共享一组 KV，极限压缩</td>
+</tr>
+<tr>
+<td><strong>MLA（Multi-head Latent Attention）</strong></td>
+<td>DeepSeek 发明，把 KV 压到潜空间，再解压</td>
+</tr>
+</tbody></table>
+<h3 id="7-2-聪明地管理-KV-Cache"><a href="#7-2-聪明地管理-KV-Cache" class="headerlink" title="7.2 聪明地管理 KV-Cache"></a>7.2 聪明地管理 KV-Cache</h3><table>
+<thead>
+<tr>
+<th>技术</th>
+<th>思路</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>PagedAttention</strong></td>
+<td>把 KV 切成”页”，按需分配，避免预留浪费</td>
+</tr>
+<tr>
+<td><strong>Prefix Caching</strong></td>
+<td>多个对话的公共开头（system prompt）共用一份 KV</td>
+</tr>
+<tr>
+<td><strong>StreamingLLM &#x2F; H2O</strong></td>
+<td>长对话时<strong>丢掉不重要的老 KV</strong>，只保留最近和极少数关键 KV</td>
+</tr>
+<tr>
+<td><strong>KV Eviction</strong></td>
+<td>内存紧张时智能驱逐某些对话的 KV</td>
+</tr>
+</tbody></table>
+<h3 id="7-3-读-KV-时少读一点"><a href="#7-3-读-KV-时少读一点" class="headerlink" title="7.3 读 KV 时少读一点"></a>7.3 读 KV 时少读一点</h3><table>
+<thead>
+<tr>
+<th>技术</th>
+<th>思路</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Sliding Window Attention</strong></td>
+<td>每次只读最近 N 个 token 的 KV</td>
+</tr>
+<tr>
+<td><strong>Sparse Attention</strong></td>
+<td>大部分 KV 不读，只读重要的</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="8-一句话总结"><a href="#8-一句话总结" class="headerlink" title="8. 一句话总结"></a>8. 一句话总结</h2><blockquote class="markdown-alert markdown-alert-important"><p class="markdown-alert-title">IMPORTANT</p><p><strong>KV-Cache 是 LLM 生成过程中保存下来的历史 $K$ 和 $V$。</strong></p>
+</blockquote>
+<p><strong>为什么要有</strong>：LLM 每生成一个 token 都要回顾所有历史 token 的 $K$ 和 $V$。不使用缓存就要反复重算，复杂度为 $O(N^2)$；使用缓存后只需要 $O(N)$。</p>
+<p><strong>有什么用</strong>：让 LLM 生成速度从”几乎跑不起来”变成”可用”。</p>
+<p><strong>副作用</strong>：KV-Cache 本身会涨到几 GB，成为端侧 LLM 的<strong>第二大内存消耗和第二大带宽瓶颈</strong>（第一是权重）。</p>
+<p><strong>端侧 LLM 优化 &#x3D; 解决权重瓶颈（量化）+ 解决 KV 瓶颈（量化 + 分页 + 共享 + 驱逐）</strong>。</p>
+
+  </div>
+</article>
+
+
+
+    <div class="blog-post-comments">
+        <div id="giscus_thread"
+             data-giscus-light-theme="light"
+             data-giscus-dark-theme="dark">
+            <noscript>加载评论需要在浏览器启用 JavaScript 脚本支持。</noscript>
+        </div>
+    </div>
+
+
+
+        <footer id="footer">
+  <div class="footer-main">
+    <div class="footer-left">
+      Copyright &copy;
+      
+      
+      2017-2026
+      Jimmy Ho
+      <div class="footer-version">当前呈现版本：1e36370a</div>
+    </div>
+    <div class="footer-right">
+      <nav>
+        <ul>
+          <li><a target="_blank" rel="noopener" href="https://status.jimmyho.net/">服务器状态</a></li><!--
+       --><li><a href="/sitemap.xml">网站地图</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+  <div class="footer-license">
+    除非<a target="_blank" rel="noopener" href="https://creativecommons.org/policies/#license">另有说明</a>，本网站内容均采用
+    <a target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans" rel="license noopener">知识共享署名—非商业性使用—相同方式共享 4.0 国际许可协议（CC BY-NC-SA 4.0）</a>许可。
+  </div>
+</footer>
+
+    </div>
+    <div id="floating-menu" class="floating-menu">
+  <div id="floating-menu-actions" class="floating-menu-actions" aria-hidden="true">
+    
+      <a class="floating-action" href="/2026/07/19/linux-sched-ext-guide/" aria-label="上一篇" title="上一篇">
+        <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+      </a>
+    
+    
+      <a class="floating-action" href="/2026/07/19/flashattention-guide/" aria-label="下一篇" title="下一篇">
+        <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+      </a>
+    
+    <button id="floating-top" class="floating-action" type="button" aria-label="返回顶部" title="返回顶部" hidden>
+      <i class="fa-solid fa-chevron-up" aria-hidden="true"></i>
+    </button>
+    
+      <button id="floating-share-toggle" class="floating-action" type="button" aria-label="分享文章" title="分享文章" data-share-title="KV-Cache 这一个核心概念" data-share-url="https://blog.jimmyho.net/2026/07/19/kv-cache-guide/" data-share-copied="复制成功！">
+        <i class="fa-solid fa-share-alt" aria-hidden="true"></i>
+      </button>
+    
+    <button id="theme-toggle" class="floating-action" type="button" aria-label="Switch to light mode" title="Switch to light mode">
+      <i class="fa-solid fa-sun" aria-hidden="true"></i>
+    </button>
+    <a class="floating-action" href="/" aria-label="首页" title="首页">
+      <i class="fa-solid fa-home" aria-hidden="true"></i>
+    </a>
+  </div>
+
+  <button id="floating-menu-toggle" class="theme-toggle" type="button" aria-label="菜单" title="菜单" aria-expanded="false" aria-controls="floating-menu-actions">
+    <i class="fa-solid fa-bars" aria-hidden="true"></i>
+  </button>
+  <div id="floating-share-status" class="floating-share-status" role="status" aria-live="polite"></div>
+</div>
+
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script>
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script>
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"复制到粘贴板！\">";
+    btn += '<i class="fa-regular fa-clone"></i>';
+    btn += '</span>';
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "复制成功！");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+
+<script src="/js/theme-toggle.js"></script>
+
+<!-- search -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Disqus Comments -->
+
+<!-- utterances Comments -->
+
+<!-- Giscus Comments -->
+
+    <script type="text/javascript">
+      (function(){
+          var container = document.getElementById('giscus_thread');
+          if (!container) return;
+
+          var currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+          var lightTheme = container.getAttribute('data-giscus-light-theme') || 'light';
+          var darkTheme = container.getAttribute('data-giscus-dark-theme') || 'dark';
+          var script = document.createElement('script');
+
+          script.src = 'https://giscus.app/client.js';
+          script.setAttribute('data-repo', 'jimmypury/blog-comments');
+          script.setAttribute('data-repo-id', 'R_kgDOTWOXyQ');
+          script.setAttribute('data-category', 'Announcements');
+          script.setAttribute('data-category-id', 'DIC_kwDOTWOXyc4DBCtB');
+          script.setAttribute('data-mapping', 'pathname');
+          script.setAttribute('data-strict', '1');
+          script.setAttribute('data-reactions-enabled', '1');
+          script.setAttribute('data-emit-metadata', '0');
+          script.setAttribute('data-input-position', 'bottom');
+          script.setAttribute('data-theme', currentTheme === 'light' ? lightTheme : darkTheme);
+          script.setAttribute('data-lang', 'zh-CN');
+          script.setAttribute('data-loading', 'lazy');
+          script.setAttribute('crossorigin', 'anonymous');
+          script.async = true;
+
+          container.appendChild(script);
+      }());
+  </script>
+
+
+</body>
+</html>

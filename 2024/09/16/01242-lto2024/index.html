@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang=zh>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="本文以二手LTO-5磁带驱动器、二手LTO-5磁带和Windows操作系统为例，介绍磁带存储在家庭、小型企业存档数据场景下的使用。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="LTO磁带2024年使用全指南">
+<meta property="og:url" content="https://blog.jimmyho.net/2024/09/16/01242-lto2024/">
+<meta property="og:site_name" content="Jimmy&#39;s Blog">
+<meta property="og:description" content="本文以二手LTO-5磁带驱动器、二手LTO-5磁带和Windows操作系统为例，介绍磁带存储在家庭、小型企业存档数据场景下的使用。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/3755857616.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/1706614416.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/1248281919.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/2189907997.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/2573969448.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/2280675207.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/4245209907.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/1702595547.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/1018694938.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/3093891136.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/348218355.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/1171925638.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/797638783.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/3100472791.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/3752466139.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/1647129832.png">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/09/966267550.png">
+<meta property="article:published_time" content="2024-09-16T05:25:00.000Z">
+<meta property="article:modified_time" content="2024-09-16T06:10:29.000Z">
+<meta property="article:author" content="Jimmy Ho">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.jimmyho.net/uploads/2024/09/3755857616.png">
+    
+    
+    
+      <link rel="canonical" href="https://blog.jimmyho.net/2024/09/16/01242-lto2024/">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>LTO磁带2024年使用全指南</title>
+    <script>
+      (function() {
+        var theme = 'dark';
+        try {
+          theme = localStorage.getItem('cactus-theme') || 'dark';
+        } catch (error) {}
+        document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+      }());
+    </script>
+    <!-- async scripts -->
+    <!-- Google Analytics -->
+
+
+    <!-- Umami Analytics -->
+
+
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- rss -->
+    
+    
+	<!-- mathjax -->
+	
+		<script type="text/x-mathjax-config">
+		  MathJax.Hub.Config({
+			tex2jax: {
+			  skipTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
+			  inlineMath: [['$','$']]
+			}
+		  });
+		</script>
+		<script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-MML-AM_CHTML' async></script>
+	
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  
+  <div id="toc">
+    <ol class="toc">
+      <li class="toc-item toc-level-1 toc-post-title">
+        <a class="toc-link" href="#post-title"><span class="toc-text">LTO磁带2024年使用全指南</span></a>
+        
+          <div class="toc-post-children">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#0-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%98%AF%E7%A3%81%E5%B8%A6"><span class="toc-number">1.</span> <span class="toc-text">0 为什么是磁带</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#1-%E5%87%86%E5%A4%87"><span class="toc-number">2.</span> <span class="toc-text">1 准备</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-1-%E7%A1%AC%E4%BB%B6"><span class="toc-number">2.1.</span> <span class="toc-text">1.1 硬件</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#1-2-%E8%BD%AF%E4%BB%B6"><span class="toc-number">2.2.</span> <span class="toc-text">1.2 软件</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-%E4%BD%BF%E7%94%A8"><span class="toc-number">3.</span> <span class="toc-text">2 使用</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-%E7%A3%81%E5%B8%A6%E9%A9%B1%E5%8A%A8%E5%99%A8%E7%AE%A1%E7%90%86"><span class="toc-number">3.1.</span> <span class="toc-text">2.1 磁带驱动器管理</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-%E4%BD%BF%E7%94%A8%E7%A3%81%E5%B8%A6"><span class="toc-number">3.2.</span> <span class="toc-text">2.2 使用磁带</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-3-LTFS"><span class="toc-number">3.3.</span> <span class="toc-text">2.3 LTFS</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#3-%E5%90%8E%E8%AE%B0"><span class="toc-number">4.</span> <span class="toc-text">3 后记</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-%E5%8F%82%E8%80%83"><span class="toc-number">5.</span> <span class="toc-text">4 参考</span></a></li></ol>
+          </div>
+        
+      </li>
+    </ol>
+  </div>
+</div>
+
+    
+    <div class="content index py4  post-content-shell">
+        
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 id="post-title" class="posttitle p-name" itemprop="name headline">
+        LTO磁带2024年使用全指南
+    </h1>
+
+
+    <div class="meta">
+      <span class="author p-author h-card" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span class="p-name" itemprop="name">Jimmy Ho</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2024-09-16T05:25:00.000Z" class="dt-published" itemprop="datePublished">2024-09-16</time>
+        
+        (Updated: <time datetime="2024-09-16T06:10:29.000Z" class="dt-updated" itemprop="dateModified">2024-09-16</time>)
+        
+      
+    </div>
+
+
+      
+    <div class="article-category">
+        <i class="fa-solid fa-archive"></i>
+        <a class="category-link" href="/categories/%E8%AE%A1%E7%AE%97%E6%9C%BA/">计算机</a>
+    </div>
+
+
+      
+
+    </div>
+  </header>
+  
+
+  <div class="content e-content" itemprop="articleBody">
+    <p>本文以二手LTO-5磁带驱动器、二手LTO-5磁带和Windows操作系统为例，介绍磁带存储在<strong>家庭、小型企业存档数据场景</strong>下的使用。</p>
+<span id="more"></span>
+
+<p><del>给陪伴咱的小姐姐们预留的房间不够大了</del>，就在想有没有什么方法存储超多数据并且成本能够接受。找了一圈下来发现磁带确实很契合我的需求，但是没有很好的教程，全是干涩的知识库文章，而且很多需要自己调研的内容。于是有了这篇不完全教程。</p>
+<h2 id="0-为什么是磁带"><a href="#0-为什么是磁带" class="headerlink" title="0 为什么是磁带"></a>0 为什么是磁带</h2><p>笔者认为，<strong>冷数据</strong>的最佳存储介质需要具备以下几个性质：</p>
+<ol>
+<li>每单位存储空间价格低</li>
+<li>存储可靠性高，可长时间存储</li>
+<li>不可篡改（Optional）</li>
+</ol>
+<p>如此笔者根据当前市场价格（包含普遍或合理的二手产品价格，数据收集日期为2024&#x2F;09&#x2F;10，价格不一定准确），可以比较当前常用的存储介质：</p>
+<table>
+<thead>
+<tr>
+<th>介质</th>
+<th>每TB价格（CNY）</th>
+<th>保存时间</th>
+<th>初始化成本</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>NVMe SSD</td>
+<td>300</td>
+<td>1y（JEDEC）&#x2F;3y（Typ）</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr>
+<td>SATA SSD</td>
+<td>280</td>
+<td>1y（JEDEC）&#x2F;3y（Typ）</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr>
+<td>HDD</td>
+<td>45</td>
+<td>5y</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr>
+<td>BD</td>
+<td>129</td>
+<td>10~100y</td>
+<td>200</td>
+<td>初始化成本包括：BD-RW驱动器</td>
+</tr>
+<tr>
+<td>BDXL</td>
+<td>400</td>
+<td>10~100y</td>
+<td>400</td>
+<td>初始化成本包括：BDXL-RW驱动器</td>
+</tr>
+<tr>
+<td>LTO-4</td>
+<td>8.75（Native）</td>
+<td>15~30y</td>
+<td>350</td>
+<td>初始化成本包括：LTO-4驱动器</td>
+</tr>
+<tr>
+<td>LTO-5</td>
+<td>15（Native）</td>
+<td>15~30y</td>
+<td>600</td>
+<td>初始化成本包括：LTO-5驱动器</td>
+</tr>
+<tr>
+<td>LTO-6</td>
+<td>21（Native）</td>
+<td>15~30y</td>
+<td>1300</td>
+<td>初始化成本包括：LTO-6驱动器</td>
+</tr>
+<tr>
+<td>LTO-9</td>
+<td>45（Native）</td>
+<td>15~30y</td>
+<td>50000</td>
+<td>初始化成本包括：LTO-9驱动器</td>
+</tr>
+</tbody></table>
+<p>可见，SSD、HDD、BD-R等存储介质的使用均需要较高的成本，而磁带的单位存储容量价格是较低的。不过，最新的LTO-9磁带驱动器价格较高，初始化成本很高，适合数据量大于200TB的存档数据；而LTO-5、LTO-6的单位存储容量价格和初始化成本都相对更能接受（非全新产品），适合存储20-200TB的存档数据。同时，LTO磁带具有机械写保护锁，可以有效防止误操作。</p>
+<h2 id="1-准备"><a href="#1-准备" class="headerlink" title="1 准备"></a>1 准备</h2><h3 id="1-1-硬件"><a href="#1-1-硬件" class="headerlink" title="1.1 硬件"></a>1.1 硬件</h3><h4 id="1-1-1-磁带驱动器"><a href="#1-1-1-磁带驱动器" class="headerlink" title="1.1.1 磁带驱动器"></a>1.1.1 磁带驱动器</h4><p>目前的LTO磁带驱动器分为两种连接方式：FC光纤和SAS。</p>
+<blockquote>
+<p>FC连接方式更常用于磁带库（Tape Library）等大型磁带管理设备的内置驱动器中。磁带库作为占地较大、自动化程度较高的设备，可以做到根据磁带上的条码自动使用机械臂等选取对应磁带插入到驱动器中，并为其他服务器提供远程存储服务。目前还无法低成本地应用于家庭和小型企业场景中。</p>
+<p>目前二手市场上FC光纤接口的驱动器相对SAS接口的驱动器价格较低。</p>
+</blockquote>
+<p>在本文的使用场景中，两者均可正常使用，但是需要使用不同类型的存储适配器以连接计算机。另有一种桌面式外置磁带驱动器，可以使用USB与计算机相连。</p>
+<p><strong>例如</strong>，笔者的HP二手SAS接口LTO-5半高驱动器，需要支持SAS 6GB（SAS2）的HBA卡。因此，需要的硬件为：</p>
+<ol>
+<li>磁带驱动器</li>
+<li>SFF-8087 to SFF-8482转接线</li>
+<li>HBA卡（支持SAS 2及以上）</li>
+<li>至少12V 1.5A和5V 4A的电源供应</li>
+</ol>
+<blockquote class="markdown-alert markdown-alert-warning"><p class="markdown-alert-title">WARNING</p><p>磁带驱动器对电源的要求较高。不像HDD，磁带驱动器需要更高的5V电流。</p>
+</blockquote>
+<h4 id="1-1-2-磁带"><a href="#1-1-2-磁带" class="headerlink" title="1.1.2 磁带"></a>1.1.2 磁带</h4><p>磁带相比HDD等设备更适合冷数据存储的原因是，磁带的存储介质和存储控制器是分开的，而HDD、SSD等其控制器和真正的存储介质是绑定的，因此这些设备无法通过只购买存储介质的方式来避免额外存储控制器带来的成本。</p>
+<p>目前最常用的磁带为LTO磁带。由于所有生产LTO磁带的厂家统一使用LTO品牌规范生产磁带及驱动器，因此不同厂商的磁带和驱动器之间相互兼容。</p>
+<p>LTO磁带支持压缩、加密（LTO-4及以后）、分区（LTO-5及以后）、WORM（LTO-3及以后）。</p>
+<ul>
+<li><p>压缩：LTO磁带驱动器支持硬件压缩，其<em>最高</em>压缩比可以达到2:1（LTO-5及以前）或2.5:1（LTO-6及以后）。</p>
+<blockquote>
+<p>LTO的压缩不影响性能（流式压缩），但是压缩效果取决于传输的数据类型。</p>
+</blockquote>
+</li>
+<li><p>加密：LTO磁带驱动器支持硬件对称加密（AES256）。</p>
+</li>
+<li><p>分区：LTO磁带驱动器支持将磁带分区。其中LTO-5支持2个分区，LTO-6及以上支持4个分区。</p>
+</li>
+<li><p>WORM（Write Once Read Many）：一种磁带，其区别于普通磁带，写入策略类似DVD-R，一次性写入之后无法修改。</p>
+</li>
+</ul>
+<p>由于技术的更新迭代，不同世代的磁带和驱动器之间的兼容性有限。目前LTO给出的策略是，当前世代的驱动器和本世代的磁带和相隔1世代的磁带相兼容，与相隔2个世代及以上的磁带并不兼容（LTO-7及以下世代的驱动器兼容相隔2个世代的磁带的读取），所有驱动器不支持向上兼容。具体的<a target="_blank" rel="noopener" href="https://www.ibm.com/docs/en/ts4500-tape-library?topic=drives-cartridges-that-are-compatible-lto-tape">LTO驱动器世代和LTO磁带世代的兼容性表</a>如下。</p>
+<table>
+<thead>
+<tr>
+<th>LTO磁带世代&#x2F;类型</th>
+<th>LTO磁带驱动器世代</th>
+<th></th>
+<th></th>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody><tr>
+<td></td>
+<td><strong>LTO-9</strong></td>
+<td><strong>LTO-8</strong></td>
+<td><strong>LTO-7</strong></td>
+<td><strong>LTO-6</strong></td>
+<td><strong>LTO-5</strong></td>
+</tr>
+<tr>
+<td>18 TB LTO 9 Data Cartridge (xxxxxxL9)</td>
+<td>R&#x2F;W</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+</tr>
+<tr>
+<td>18 TB LTO 9 Data Cartridge (xxxxxxLZ)</td>
+<td>R&#x2F;W</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+</tr>
+<tr>
+<td>12 TB LTO 8 Data Cartridge (xxxxxxL8)</td>
+<td>R&#x2F;W</td>
+<td>R&#x2F;W</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+</tr>
+<tr>
+<td>12 TB LTO 8 WORM Cartridge (xxxxxxLY)</td>
+<td>R&#x2F;W</td>
+<td>R&#x2F;W</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+</tr>
+<tr>
+<td>9 TB LTO M8 Data Cartridge (xxxxxxM8)</td>
+<td>Not compatible</td>
+<td>R&#x2F;W</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+</tr>
+<tr>
+<td>6 TB LTO 7 Data Cartridge (xxxxxxL7)</td>
+<td>Not compatible</td>
+<td>R&#x2F;W</td>
+<td>R&#x2F;W</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+</tr>
+<tr>
+<td>6 TB LTO 7 WORM Cartridge (xxxxxxLX)</td>
+<td>Not compatible</td>
+<td>R&#x2F;W</td>
+<td>R&#x2F;W</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+</tr>
+<tr>
+<td>2.5 TB LTO 6 Data Cartridge (xxxxxxL6)</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>R&#x2F;W</td>
+<td>R&#x2F;W</td>
+<td>Not compatible</td>
+</tr>
+<tr>
+<td>2.5 TB LTO 6 WORM Cartridge (xxxxxxLW)</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>R&#x2F;W</td>
+<td>R&#x2F;W</td>
+<td>Not compatible</td>
+</tr>
+<tr>
+<td>1.5 TB LTO 5 Data Cartridge (xxxxxxL5)</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Read only</td>
+<td>R&#x2F;W</td>
+<td>R&#x2F;W</td>
+</tr>
+<tr>
+<td>1.5 TB LTO 5 WORM Cartridge (xxxxxxLV)</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Read only</td>
+<td>R&#x2F;W</td>
+<td>R&#x2F;W</td>
+</tr>
+<tr>
+<td>800 GB LTO 4 Data Cartridge (xxxxxxL4)</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Read only</td>
+<td>R&#x2F;W</td>
+</tr>
+<tr>
+<td>800 GB LTO 4 WORM Cartridge (xxxxxxLU)</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Read only</td>
+<td>R&#x2F;W</td>
+</tr>
+<tr>
+<td>400 GB LTO 3 Data Cartridge (xxxxxxL3)</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Read only</td>
+</tr>
+<tr>
+<td>400 GB LTO 3 WORM Cartridge (xxxxxxLT)</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Not compatible</td>
+<td>Read only</td>
+</tr>
+</tbody></table>
+<p>另外，还有一种清洁磁带，可以用于清洁驱动器的磁头。这种磁带没有世代的限制，所有驱动器均可使用。在磁带驱动器使用多了之后，就会有使用清洁磁带清洁磁头的提示。一盘清洁带可以使用多次，因此正常情况下1盘清洁磁带就够本文使用场景下使用了。</p>
+<h3 id="1-2-软件"><a href="#1-2-软件" class="headerlink" title="1.2 软件"></a>1.2 软件</h3><p>由于笔者目前只有HPE的磁带驱动器，因此本节将以HPE为例，介绍在本文场景下，驱动器使用的各类软件。其余厂商均会提供各大体系结构&#x2F;操作系统可用的Driver、Utility等，详细信息可以查看各大厂商的产品支持页面。</p>
+<h4 id="1-2-1-Driver"><a href="#1-2-1-Driver" class="headerlink" title="1.2.1 Driver"></a>1.2.1 Driver</h4><p><a target="_blank" rel="noopener" href="https://support.hpe.com/connect/s/softwaredetails?language=en_US&collectionId=MTX-18c59bb4b61b4e38">HPE官方支持页面</a></p>
+<p>LTO驱动器在Windows 10及以上版本可以直接使用Windows Update安装驱动。在Linux、旧版Windows等操作系统中，需要到HPE官网下载相关设备驱动。</p>
+<h4 id="1-2-2-Firmware"><a href="#1-2-2-Firmware" class="headerlink" title="1.2.2 Firmware"></a>1.2.2 Firmware</h4><p><a target="_blank" rel="noopener" href="https://support.hpe.com/connect/s/softwaredetails?language=en_US&collectionId=MTX-437444a991844b16&tab=releaseNotes">HPE官方支持页面</a></p>
+<p>LTO驱动器固件的下载一直被严格限制（需要<strong>全新</strong>购买并在官网注册产品，使用客户账号验证），仅有少数厂商开放下载（例如Quantum、FUJITSU等）。因此在选购<strong>二手</strong>LTO驱动器时，需要留意驱动器的厂商信息，做好固件升级和品牌的权衡。</p>
+<h4 id="1-2-3-HPE-Library-and-Tape-Tools（HPE-L-TT）"><a href="#1-2-3-HPE-Library-and-Tape-Tools（HPE-L-TT）" class="headerlink" title="1.2.3 HPE Library and Tape Tools（HPE L&amp;TT）"></a>1.2.3 HPE Library and Tape Tools（HPE L&amp;TT）</h4><p><a target="_blank" rel="noopener" href="https://support.hpe.com/connect/s/softwaredetails?language=en_US&collectionId=MTX-6d5d29b8407d4250&tab=releaseNotes&softwareId=MTX_5e312d83a16548f0895de64226">HPE官方支持页面</a></p>
+<p>该软件用于测试驱动器和检查当前驱动器的健康状态。该软件主要用于查看驱动器的使用状况和健康度等。</p>
+<h4 id="1-2-4-HPE-StoreOpen-Software（HPE-LTFS）"><a href="#1-2-4-HPE-StoreOpen-Software（HPE-LTFS）" class="headerlink" title="1.2.4 HPE StoreOpen Software（HPE LTFS）"></a>1.2.4 HPE StoreOpen Software（HPE LTFS）</h4><p><a target="_blank" rel="noopener" href="https://support.hpe.com/connect/s/softwaredetails?language=en_US&collectionId=MTX-882b042a6fc04042&tab=releaseNotes">HPE官方支持页面</a></p>
+<p>该软件用于使磁带支持LTFS文件系统。开源，核心代码部分位于<a target="_blank" rel="noopener" href="https://github.com/LinearTapeFileSystem/ltfs">GitHub</a>。目前推荐使用该软件来管理磁带数据，因为LTFS磁带挂载之后的<strong>使用方式</strong>基本和普通磁盘相同。</p>
+<blockquote class="markdown-alert markdown-alert-note"><p class="markdown-alert-title">NOTE</p><p>LTFS仅适用于LTO-5及以后世代的磁带和驱动器。</p>
+</blockquote>
+<h4 id="1-2-5-HPE-StoreEver-Command-View-for-Tape-Libraries（HPE-CVTL）"><a href="#1-2-5-HPE-StoreEver-Command-View-for-Tape-Libraries（HPE-CVTL）" class="headerlink" title="1.2.5 HPE StoreEver Command View for Tape Libraries（HPE CVTL）"></a>1.2.5 HPE StoreEver Command View for Tape Libraries（HPE CVTL）</h4><p><a target="_blank" rel="noopener" href="https://support.hpe.com/connect/s/softwaredetails?language=en_US&collectionId=MTX-7482ff98d3174a3e&tab=releaseNotes">HPE官方支持页面</a></p>
+<p>管理支持的HPE磁带库和驱动器的TapeAssure、许可和数据验证功能。本文不会使用到该工具来操作磁带和驱动器。</p>
+<h4 id="1-2-6-数据备份-归档软件"><a href="#1-2-6-数据备份-归档软件" class="headerlink" title="1.2.6 数据备份&#x2F;归档软件"></a>1.2.6 数据备份&#x2F;归档软件</h4><p>目前使用最普遍的磁带备份&#x2F;归档软件是各大磁带生产厂商研发的配套专有软件（例如IBM Spectrum Archive Enterprise），以及一些厂商所研发的专有软件（例如<a target="_blank" rel="noopener" href="https://www.veritas.com/protection/backup-exec">Symantec Backup Exec</a>），均较难自由（甚至付费）获得。因此这里推荐一些适合本文使用场景的备份&#x2F;归档软件。以下软件均为付费软件，若需要开源方案，请使用LTFS。本文不提供以下各软件的使用与下载方式。</p>
+<ol>
+<li><p><a target="_blank" rel="noopener" href="https://www.iperiusbackup.com/">Iperius Backup</a></p>
+</li>
+<li><p><a target="_blank" rel="noopener" href="https://www.imagineproducts.com/product/mylto">myLTO for Mac</a></p>
+</li>
+</ol>
+<h2 id="2-使用"><a href="#2-使用" class="headerlink" title="2 使用"></a>2 使用</h2><h3 id="2-1-磁带驱动器管理"><a href="#2-1-磁带驱动器管理" class="headerlink" title="2.1 磁带驱动器管理"></a>2.1 磁带驱动器管理</h3><p>本文只提及简单的驱动器管理操作，较为复杂的不在此讨论。</p>
+<h4 id="2-1-1-打开HPE-L-TT"><a href="#2-1-1-打开HPE-L-TT" class="headerlink" title="2.1.1 打开HPE L&amp;TT"></a>2.1.1 打开HPE L&amp;TT</h4><ol>
+<li><p>安装Driver、HPE L&amp;TT、HPE LTFS，并将硬件连接至计算机。</p>
+</li>
+<li><p>运行L&amp;TT，出现以下界面。初次运行，Scan Mode选择<code>Hardware Scan</code>；I&#x2F;O Mode则总是选择<code>NT Miniport</code>。</p>
+<blockquote>
+<p>下次运行时，Scan Mode可以选择<code>Saved/Manual Scan</code>，勾选<code>Skip this dialog in the future</code>，并在弹出的对话框中选择需要管理的驱动器，以节省加载时间。</p>
+<p>注意：运行L&amp;TT前请确保没有任何程序正在读写磁带，否则会出现不可预料的错误。同时，L&amp;TT会独占磁带驱动器，使得其他应用程序无法读写磁带。</p>
+</blockquote>
+</li>
+</ol>
+<p><img src="/uploads/2024/09/3755857616.png" alt="L&amp;TT Starter"></p>
+<ol start="3">
+<li>若硬件正确连接，点击Continue后，窗口右侧将显示当前计算机中的磁带驱动器，如图。点击想要管理的驱动器，加载驱动器信息。</li>
+</ol>
+<p><img src="/uploads/2024/09/1706614416.png" alt="L&amp;TT Mainpage"></p>
+<ol start="4">
+<li><p>加载完毕后，首页默认显示当前的驱动器信息和磁带信息，如图所示。</p>
+<blockquote>
+<p>这里可以看到，笔者的驱动器是LTO-5驱动器，支持OBDR和WORM。插入的磁带是LTO-5 Data磁带，没有设置条码编号、写保护，也没有格式化为LTFS。</p>
+<p>OBDR（One Button Disaster Recovery）是HP磁带驱动器独有的功能，可以使用一盘磁带恢复整个系统（Tapeware软件）。但是目前Tapeware已经停止支持。</p>
+</blockquote>
+</li>
+</ol>
+<p><img src="/uploads/2024/09/1248281919.png" alt="L&amp;TT Mainpage with info"></p>
+<h4 id="2-1-2-查看驱动器健康度"><a href="#2-1-2-查看驱动器健康度" class="headerlink" title="2.1.2 查看驱动器健康度"></a>2.1.2 查看驱动器健康度</h4><p>点击L&amp;TT上的<code>Health</code>，等待驱动器检测完毕，查看报告如图所示。红色方框区域为驱动器的预估寿命。</p>
+<p><img src="/uploads/2024/09/2189907997.png" alt="Drive Report"></p>
+<h3 id="2-2-使用磁带"><a href="#2-2-使用磁带" class="headerlink" title="2.2 使用磁带"></a>2.2 使用磁带</h3><h4 id="2-2-1-检查磁带窗口"><a href="#2-2-1-检查磁带窗口" class="headerlink" title="2.2.1 检查磁带窗口"></a>2.2.1 检查磁带窗口</h4><p>使用磁带时先检查磁带的状态，二手磁带的好坏会直接影响驱动器的使用寿命。</p>
+<p>使用前，先拉开磁带窗口检查磁带头是否正确地卡在预定位置上，如图所示为正常状态。若磁带头缺失，或是位置不正确，或是磁带窗口不能轻松地打开，或是磁带窗口不能自动回弹至关闭状态，请勿使用该磁带。</p>
+<blockquote class="markdown-alert markdown-alert-warning"><p class="markdown-alert-title">WARNING</p><p>在拨开磁带窗口时请勿触碰磁带。可以使用图中方式，用胶带拨开磁带窗口。</p>
+</blockquote>
+<p><img src="/uploads/2024/09/2573969448.png" alt="Tape window"></p>
+<h4 id="2-2-2-检查磁带写保护锁"><a href="#2-2-2-检查磁带写保护锁" class="headerlink" title="2.2.2 检查磁带写保护锁"></a>2.2.2 检查磁带写保护锁</h4><p>在磁带的正面，有一个写保护锁，可以防止磁带驱动器修改磁带上的内容。若需要修改磁带上的内容（可读写），需要将该开关拨至如图位置（关闭）。</p>
+<blockquote class="markdown-alert markdown-alert-important"><p class="markdown-alert-title">IMPORTANT</p><p>一般来说，写完数据的磁带应当保持写保护锁为开启的状态，以确保数据不会因为误操作而丢失。</p>
+<p>不要依赖该开关！该开关只能防止误操作导致的意外写入（甚至误操作将写保护锁关闭都无法防止）。若要彻底防止误写入，建议使用WORM磁带。</p>
+<p>WORM磁带只能进行Append操作，无法对数据进行修改甚至擦除。</p>
+</blockquote>
+<p><img src="/uploads/2024/09/2280675207.png" alt="Write Lock"></p>
+<h4 id="2-2-3-检查磁带条形码（Barcode）"><a href="#2-2-3-检查磁带条形码（Barcode）" class="headerlink" title="2.2.3 检查磁带条形码（Barcode）"></a>2.2.3 检查磁带条形码（Barcode）</h4><p>磁带在磁带库中使用时，磁带盒身指定位置会贴有一维码标签，使得机器可以识别磁带。因此购买的二手磁带一般均自带有该标签，如图所示。</p>
+<blockquote>
+<p>磁带标签编号使用Code39编码，前6位为编号，可以是大写字母和数字；最后2位为磁带的世代或类型。由于该标签规格是公开的，因此有很多开源的标签生成实现（例如<a target="_blank" rel="noopener" href="https://pbs.proxmox.com/docs/lto-barcode/index.html">该网站</a>），可以生成标签并使用打印机打印、裁剪后粘贴在磁带上。需要注意的是，若需要磁带能被机器识别（磁带库使用），则需要使用哑光纸张打印标签。</p>
+<p>磁带标签的标准规格可以参见<a target="_blank" rel="noopener" href="https://www.ibm.com/docs/en/ts3500-tape-library?topic=media-lto-bar-code-label">该知识库</a>。</p>
+<p>磁带的标签编号同时也存在于磁带内置的芯片中。若使用磁带库，则在磁带芯片中的标签编号会自动被实际粘贴的标签编号覆盖以保持一致性。若类似本文场景，仅使用桌面级磁带驱动器，那么就需要在格式化磁带时手动指定磁带的标签编号。</p>
+<p>尽管只有磁带库需要条形码标签以识别磁带，笔者也建议在本文场景中利用上述标签管理磁带。</p>
+</blockquote>
+<p><img src="/uploads/2024/09/4245209907.png" alt="Tape Barcode Label Sample"></p>
+<p>该标签应当粘贴在磁带正面的凹槽中，位置如图所示（图中磁带尚未粘贴标签）。</p>
+<p><img src="/uploads/2024/09/1702595547.png" alt="Tape Label Location"></p>
+<h4 id="2-2-4-插入磁带"><a href="#2-2-4-插入磁带" class="headerlink" title="2.2.4 插入磁带"></a>2.2.4 插入磁带</h4><p>将磁带有品牌标识的一面向上，跟随磁带上的箭头方向插入驱动器。驱动器会自动加载并开始读取元数据。</p>
+<h4 id="2-2-5-弹出磁带"><a href="#2-2-5-弹出磁带" class="headerlink" title="2.2.5 弹出磁带"></a>2.2.5 弹出磁带</h4><p>在磁带驱动器空闲（指示灯“Ready”常亮）时，长按驱动器上的弹出键。稍等片刻磁带自动弹出。</p>
+<h4 id="2-2-6-保存磁带"><a href="#2-2-6-保存磁带" class="headerlink" title="2.2.6 保存磁带"></a>2.2.6 保存磁带</h4><p>磁带的存储环境需要维持30~50%的湿度和18°C的温度。</p>
+<h3 id="2-3-LTFS"><a href="#2-3-LTFS" class="headerlink" title="2.3 LTFS"></a>2.3 LTFS</h3><p>LTFS（Linear Tape File System）是将磁带这种企业级存储设备介质带入本文使用场景的功臣之一。其实现开源，且LTO-5及以上的磁带均支持。</p>
+<blockquote class="markdown-alert markdown-alert-warning"><p class="markdown-alert-title">WARNING</p><p>LTFS虽然<strong>在使用上</strong>和一般的磁盘无异，但是其底层仅支持附加（Append）操作。亦即，在LTFS卷中删除&#x2F;修改文件时，旧数据依旧保留在数据分区的原位置，仅仅是在索引分区中将该数据标记为无效，并在数据分区中另外开辟空间给新数据使用。因此若需要完整使用磁带的空间，请不要删除或修改任何文件。再次格式化磁带可以重置该状态。</p>
+</blockquote>
+<p>HPE LTFS安装完毕后，运行HPE LTFS Configuration，界面如图所示。</p>
+<p><img src="/uploads/2024/09/1018694938.png" alt="HPE LTFS Configuration"></p>
+<h4 id="2-3-1-将磁带格式化为LTFS格式"><a href="#2-3-1-将磁带格式化为LTFS格式" class="headerlink" title="2.3.1 将磁带格式化为LTFS格式"></a>2.3.1 将磁带格式化为LTFS格式</h4><ol>
+<li>点击<code>Cartridge utilities...</code>，弹出窗口如图。</li>
+</ol>
+<p><img src="/uploads/2024/09/3093891136.png" alt="HPE LTFS Configuration Utilities"></p>
+<ol start="2">
+<li>点击<code>Format</code>，打开格式化向导，如图所示。</li>
+</ol>
+<p><img src="/uploads/2024/09/348218355.png" alt="Format"></p>
+<ol start="3">
+<li>点击下一页，选择格式化操作的驱动器，如图所示。建议勾选<code>Enable lossless hardware data compression</code>以开启数据压缩。建议勾选<code>Provide detailed progress information</code>以输出详细信息。</li>
+</ol>
+<p><img src="/uploads/2024/09/1171925638.png" alt="Select Format Drive"></p>
+<ol start="4">
+<li>点击下一页，设置磁带的标签编号和磁带描述。</li>
+</ol>
+<p><img src="/uploads/2024/09/797638783.png" alt="Label and Description"></p>
+<ol start="5">
+<li>点击<code>Advanced...</code>，进入高级菜单。一般情况下，该页面内容保持默认值即可。</li>
+</ol>
+<ul>
+<li><p><code>Data placement rules</code>：修改数据放置规则。</p>
+<ul>
+<li><code>Allow data files to be placed in the index partition</code>：允许将小一些的文件放入索引分区。若勾选，下面可以设置<code>FiIes may be placed in the index partition if size &lt;=</code>（小于某大小的文件可以放置于索引分区）。</li>
+<li><code>Allow mount-time overriding</code>：允许在每次挂载该磁盘的时候修改上述设置。</li>
+</ul>
+<blockquote>
+<p>LTFS文件系统将磁带分为了2个分区：Index（索引）和Data（数据），由于需要通过树状结构组织文件，因此文件的元数据存储至索引分区，而文件数据本身存储至数据分区。</p>
+<p>索引分区是固定大小的，因此若放入索引分区的文件数量过多，则可能无法存储正常的文件索引。因此只有在确认存储的数据中小文件很少的情况下才可以开启以提高空间利用率和性能。</p>
+<p>具体的LTFS实现细节请查看<a target="_blank" rel="noopener" href="https://www.snia.org/tech_activities/standards/curr_standards/ltfs">SNIA标准</a>或<a target="_blank" rel="noopener" href="https://github.com/LinearTapeFileSystem/ltfs">参考实现</a>。</p>
+</blockquote>
+</li>
+<li><p><code>Block size</code>：设置磁带上块大小。建议维持默认值。</p>
+</li>
+</ul>
+<p><img src="/uploads/2024/09/3100472791.png" alt="Advanced Settings"></p>
+<ol start="6">
+<li>点击下一页，汇总显示之前的设置项，进行最后的确认。点击完成就开始格式化过程了。</li>
+</ol>
+<blockquote class="markdown-alert markdown-alert-caution"><p class="markdown-alert-title">CAUTION</p><p>请务必确认即将格式化的磁带是否为正确的磁带，一旦开始格式化就无法恢复。</p>
+</blockquote>
+<p><img src="/uploads/2024/09/3752466139.png" alt="Summary"></p>
+<h4 id="2-3-2-挂载分区"><a href="#2-3-2-挂载分区" class="headerlink" title="2.3.2 挂载分区"></a>2.3.2 挂载分区</h4><ol>
+<li>回到LTFS Configuration主界面，选择驱动器，选择一个未使用的盘符。可选只读挂载以防止修改磁带上的内容。</li>
+</ol>
+<p><img src="/uploads/2024/09/1647129832.png" alt="Mount partition"></p>
+<ol start="2">
+<li>点击<code>Advanced options...</code>，弹出的菜单如图所示。</li>
+</ol>
+<ul>
+<li><p><code>Logging</code></p>
+<ul>
+<li><code>Support ticket folder</code>：指定位置，存储支持文件。</li>
+<li><code>Enable verbose logging (this will adversely affect performance)</code>：详细日志，影响性能，若磁带正常使用不建议开启。<ul>
+<li><code>Sending to</code>：存储日志的位置。</li>
+</ul>
+</li>
+<li><code>EnabIe extended verbose logging</code>：开启更详细的日志记录。更不建议开启，除非磁盘上一次挂载出错。</li>
+</ul>
+</li>
+<li><p><code>Thumbnails</code></p>
+<ul>
+<li><code>DisabIe thumbnails to improve performance, by marking all files as offline</code>：关闭缩略图以提升性能。尽量关闭，因为缩略图会增加不必要的读写。</li>
+</ul>
+</li>
+<li><p><code>Index capture</code></p>
+<ul>
+<li><code>Capture snapshot of index at unmount time</code>：在卸载LTFS卷时存储磁带的快照。建议开启，并将<code>Working folder</code>设置在磁盘上。此处的快照指的是索引分区的完整副本。</li>
+</ul>
+</li>
+<li><p><code>Index updates</code></p>
+<ul>
+<li><p><code>Override default index update policy</code>：覆盖默认索引更新的策略。一个是当LTFS卷被卸载的时候写入，一个是定时写入。</p>
+<blockquote>
+<p>笔者不知道默认的索引更新策略是什么。由于笔者的使用场景会确认数据写入磁带完毕后才会删除原始数据，所以我这里直接选了卸载时写入。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li><p><code>Index partition usage</code></p>
+<ul>
+<li><p><code>Request mount-time override of formatted configuration</code>：在当前的挂载会话中，能够暂时更改某些设置，而不是依赖于磁带上已经存储的默认配置。</p>
+<blockquote>
+<p>还记得格式化LTFS时的<code>Allow mount-time overriding</code>吗，这就是临时修改小文件的存储位置的设置。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li><p><code>Append Only Mode</code></p>
+<ul>
+<li><p><code>Enable Append Only mode if supported by drive</code>：打开仅附加模式。</p>
+<blockquote>
+<p>这个选项实测在笔者驱动器上无法打开，会被忽略。</p>
+<p>实际上LTFS中文件的修改和删除是以块为单位进行附加的，做In-place修改的只有索引分区。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<p><img src="/uploads/2024/09/966267550.png" alt="Advanced mounting options"></p>
+<ol start="3">
+<li>点击<code>OK</code>返回原窗口，点击<code>Create mapping</code>挂载分区。等待一会，挂载完毕即可在Windows资源管理器中看到该磁带卷。</li>
+</ol>
+<h2 id="3-后记"><a href="#3-后记" class="headerlink" title="3 后记"></a>3 后记</h2><p>本文数据不知道哪里来的，有任何问题&#x2F;经验欢迎提出，大家一起讨论。</p>
+<h2 id="4-参考"><a href="#4-参考" class="headerlink" title="4 参考"></a>4 参考</h2><p>懒得和写论文一样搞bibtex+hyperref+cite了，将就看吧。</p>
+<ol>
+<li><a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Linear_Tape-Open#Encryption">https://en.wikipedia.org/wiki/Linear_Tape-Open#Encryption</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.hpe.com/psnow/doc/c04154430.pdf?jumpid=in_lit-psnow-getpdf">https://www.hpe.com/psnow/doc/c04154430.pdf?jumpid=in_lit-psnow-getpdf</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.lto.org/">https://www.lto.org/</a></li>
+<li><a target="_blank" rel="noopener" href="https://support.hpe.com/hpesc/public/docDisplay?docId=c05145603&docLocale=en_US">https://support.hpe.com/hpesc/public/docDisplay?docId=c05145603&amp;docLocale=en_US</a></li>
+<li><a target="_blank" rel="noopener" href="https://archive.org/details/LTO-Tape-HP-IBM-Tandberg-Software-Pack">https://archive.org/details/LTO-Tape-HP-IBM-Tandberg-Software-Pack</a></li>
+<li><a target="_blank" rel="noopener" href="https://metebalci.com/blog/adventures-with-lto-in-2023/">https://metebalci.com/blog/adventures-with-lto-in-2023/</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.nakivo.com/blog/tape-backup-overview/">https://www.nakivo.com/blog/tape-backup-overview/</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.reddit.com/r/DataHoarder/comments/6ag54i/consumer_grade_tape_backup_solution/">https://www.reddit.com/r/DataHoarder/comments/6ag54i/consumer_grade_tape_backup_solution/</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.reddit.com/r/DataHoarder/comments/tvywan/are_you_personally_using_lto_tapes_why_why_not/">https://www.reddit.com/r/DataHoarder/comments/tvywan/are_you_personally_using_lto_tapes_why_why_not/</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.reddit.com/r/DataHoarder/comments/13twg7o/cheap_tape_backup_solutions_for_16tb/">https://www.reddit.com/r/DataHoarder/comments/13twg7o/cheap_tape_backup_solutions_for_16tb/</a></li>
+<li><a target="_blank" rel="noopener" href="https://forum.level1techs.com/t/affordable-tape-drive-for-windows-linux-software-recommendations/192750">https://forum.level1techs.com/t/affordable-tape-drive-for-windows-linux-software-recommendations/192750</a></li>
+<li><a target="_blank" rel="noopener" href="https://www.lto.org/lto-use-cases/">https://www.lto.org/lto-use-cases/</a></li>
+<li><a target="_blank" rel="noopener" href="https://pbs.proxmox.com/docs/lto-barcode/index.html">https://pbs.proxmox.com/docs/lto-barcode/index.html</a></li>
+<li><a target="_blank" rel="noopener" href="https://skyblond.info/archives/1057.html">https://skyblond.info/archives/1057.html</a></li>
+<li><a target="_blank" rel="noopener" href="https://skyblond.info/archives/1058.html">https://skyblond.info/archives/1058.html</a></li>
+</ol>
+
+  </div>
+</article>
+
+
+
+    <div class="blog-post-comments">
+        <div id="giscus_thread"
+             data-giscus-light-theme="light"
+             data-giscus-dark-theme="dark">
+            <noscript>加载评论需要在浏览器启用 JavaScript 脚本支持。</noscript>
+        </div>
+    </div>
+
+
+
+        <footer id="footer">
+  <div class="footer-main">
+    <div class="footer-left">
+      Copyright &copy;
+      
+      
+      2017-2026
+      Jimmy Ho
+      <div class="footer-version">当前呈现版本：1e36370a</div>
+    </div>
+    <div class="footer-right">
+      <nav>
+        <ul>
+          <li><a target="_blank" rel="noopener" href="https://status.jimmyho.net/">服务器状态</a></li><!--
+       --><li><a href="/sitemap.xml">网站地图</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+  <div class="footer-license">
+    除非<a target="_blank" rel="noopener" href="https://creativecommons.org/policies/#license">另有说明</a>，本网站内容均采用
+    <a target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans" rel="license noopener">知识共享署名—非商业性使用—相同方式共享 4.0 国际许可协议（CC BY-NC-SA 4.0）</a>许可。
+  </div>
+</footer>
+
+    </div>
+    <div id="floating-menu" class="floating-menu">
+  <div id="floating-menu-actions" class="floating-menu-actions" aria-hidden="true">
+    
+      <a class="floating-action" href="/2024/11/05/01268-linux-signal/" aria-label="上一篇" title="上一篇">
+        <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+      </a>
+    
+    
+    <button id="floating-top" class="floating-action" type="button" aria-label="返回顶部" title="返回顶部" hidden>
+      <i class="fa-solid fa-chevron-up" aria-hidden="true"></i>
+    </button>
+    
+      <button id="floating-share-toggle" class="floating-action" type="button" aria-label="分享文章" title="分享文章" data-share-title="LTO磁带2024年使用全指南" data-share-url="https://blog.jimmyho.net/2024/09/16/01242-lto2024/" data-share-copied="复制成功！">
+        <i class="fa-solid fa-share-alt" aria-hidden="true"></i>
+      </button>
+    
+    <button id="theme-toggle" class="floating-action" type="button" aria-label="Switch to light mode" title="Switch to light mode">
+      <i class="fa-solid fa-sun" aria-hidden="true"></i>
+    </button>
+    <a class="floating-action" href="/" aria-label="首页" title="首页">
+      <i class="fa-solid fa-home" aria-hidden="true"></i>
+    </a>
+  </div>
+
+  <button id="floating-menu-toggle" class="theme-toggle" type="button" aria-label="菜单" title="菜单" aria-expanded="false" aria-controls="floating-menu-actions">
+    <i class="fa-solid fa-bars" aria-hidden="true"></i>
+  </button>
+  <div id="floating-share-status" class="floating-share-status" role="status" aria-live="polite"></div>
+</div>
+
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script>
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script>
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"复制到粘贴板！\">";
+    btn += '<i class="fa-regular fa-clone"></i>';
+    btn += '</span>';
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "复制成功！");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+
+<script src="/js/theme-toggle.js"></script>
+
+<!-- search -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Disqus Comments -->
+
+<!-- utterances Comments -->
+
+<!-- Giscus Comments -->
+
+    <script type="text/javascript">
+      (function(){
+          var container = document.getElementById('giscus_thread');
+          if (!container) return;
+
+          var currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+          var lightTheme = container.getAttribute('data-giscus-light-theme') || 'light';
+          var darkTheme = container.getAttribute('data-giscus-dark-theme') || 'dark';
+          var script = document.createElement('script');
+
+          script.src = 'https://giscus.app/client.js';
+          script.setAttribute('data-repo', 'jimmypury/blog-comments');
+          script.setAttribute('data-repo-id', 'R_kgDOTWOXyQ');
+          script.setAttribute('data-category', 'Announcements');
+          script.setAttribute('data-category-id', 'DIC_kwDOTWOXyc4DBCtB');
+          script.setAttribute('data-mapping', 'pathname');
+          script.setAttribute('data-strict', '1');
+          script.setAttribute('data-reactions-enabled', '1');
+          script.setAttribute('data-emit-metadata', '0');
+          script.setAttribute('data-input-position', 'bottom');
+          script.setAttribute('data-theme', currentTheme === 'light' ? lightTheme : darkTheme);
+          script.setAttribute('data-lang', 'zh-CN');
+          script.setAttribute('data-loading', 'lazy');
+          script.setAttribute('crossorigin', 'anonymous');
+          script.async = true;
+
+          container.appendChild(script);
+      }());
+  </script>
+
+
+</body>
+</html>

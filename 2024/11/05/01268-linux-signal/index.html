@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang=zh>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="信号（Signal）是一种软中断。信号机制是进程间通信的一种方式，采用异步通信方式。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Linux Signal 及其处理机制">
+<meta property="og:url" content="https://blog.jimmyho.net/2024/11/05/01268-linux-signal/">
+<meta property="og:site_name" content="Jimmy&#39;s Blog">
+<meta property="og:description" content="信号（Signal）是一种软中断。信号机制是进程间通信的一种方式，采用异步通信方式。">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://blog.jimmyho.net/uploads/2024/11/2288457594.png">
+<meta property="article:published_time" content="2024-11-05T19:33:00.000Z">
+<meta property="article:modified_time" content="2024-11-05T19:35:56.000Z">
+<meta property="article:author" content="Jimmy Ho">
+<meta property="article:tag" content="Kernel">
+<meta property="article:tag" content="Linux">
+<meta property="article:tag" content="Signal">
+<meta property="article:tag" content="信号">
+<meta property="article:tag" content="内核">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://blog.jimmyho.net/uploads/2024/11/2288457594.png">
+    
+    
+    
+      <link rel="canonical" href="https://blog.jimmyho.net/2024/11/05/01268-linux-signal/">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>Linux Signal 及其处理机制</title>
+    <script>
+      (function() {
+        var theme = 'dark';
+        try {
+          theme = localStorage.getItem('cactus-theme') || 'dark';
+        } catch (error) {}
+        document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+      }());
+    </script>
+    <!-- async scripts -->
+    <!-- Google Analytics -->
+
+
+    <!-- Umami Analytics -->
+
+
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- rss -->
+    
+    
+	<!-- mathjax -->
+	
+		<script type="text/x-mathjax-config">
+		  MathJax.Hub.Config({
+			tex2jax: {
+			  skipTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
+			  inlineMath: [['$','$']]
+			}
+		  });
+		</script>
+		<script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-MML-AM_CHTML' async></script>
+	
+<meta name="generator" content="Hexo 8.1.2"></head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  
+  <div id="toc">
+    <ol class="toc">
+      <li class="toc-item toc-level-1 toc-post-title">
+        <a class="toc-link" href="#post-title"><span class="toc-text">Linux Signal 及其处理机制</span></a>
+        
+          <div class="toc-post-children">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%B5%81%E7%A8%8B"><span class="toc-number">1.</span> <span class="toc-text">流程</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BF%A1%E5%8F%B7%E5%A4%84%E7%90%86"><span class="toc-number">2.</span> <span class="toc-text">信号处理</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E4%BF%A1%E5%8F%B7%E5%A4%84%E7%90%86%E6%96%B9%E5%BC%8F"><span class="toc-number">2.1.</span> <span class="toc-text">信号处理方式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E8%87%AA%E5%AE%9A%E4%B9%89%E4%BF%A1%E5%8F%B7%E5%A4%84%E7%90%86%E6%96%B9%E5%BC%8F"><span class="toc-number">2.2.</span> <span class="toc-text">自定义信号处理方式</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E5%86%99%E4%B8%80%E4%B8%AA%E9%AB%98%E7%BA%A7%E7%9A%84Signal-Handler"><span class="toc-number">2.3.</span> <span class="toc-text">写一个高级的Signal Handler</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#ucontext"><span class="toc-number">3.</span> <span class="toc-text">ucontext</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#ref"><span class="toc-number">4.</span> <span class="toc-text">ref</span></a></li></ol>
+          </div>
+        
+      </li>
+    </ol>
+  </div>
+</div>
+
+    
+    <div class="content index py4  post-content-shell">
+        
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 id="post-title" class="posttitle p-name" itemprop="name headline">
+        Linux Signal 及其处理机制
+    </h1>
+
+
+    <div class="meta">
+      <span class="author p-author h-card" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span class="p-name" itemprop="name">Jimmy Ho</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2024-11-05T19:33:00.000Z" class="dt-published" itemprop="datePublished">2024-11-06</time>
+        
+        (Updated: <time datetime="2024-11-05T19:35:56.000Z" class="dt-updated" itemprop="dateModified">2024-11-06</time>)
+        
+      
+    </div>
+
+
+      
+    <div class="article-category">
+        <i class="fa-solid fa-archive"></i>
+        <a class="category-link" href="/categories/%E8%AE%A1%E7%AE%97%E6%9C%BA/">计算机</a>
+    </div>
+
+
+      
+    <div class="article-tag">
+        <i class="fa-solid fa-tag"></i>
+        <a class="p-category" href="/tags/Kernel/" rel="tag">Kernel</a>, <a class="p-category" href="/tags/Linux/" rel="tag">Linux</a>, <a class="p-category" href="/tags/Signal/" rel="tag">Signal</a>, <a class="p-category" href="/tags/%E4%BF%A1%E5%8F%B7/" rel="tag">信号</a>, <a class="p-category" href="/tags/%E5%86%85%E6%A0%B8/" rel="tag">内核</a>
+    </div>
+
+
+    </div>
+  </header>
+  
+
+  <div class="content e-content" itemprop="articleBody">
+    <p>信号（Signal）是一种软中断。信号机制是进程间通信的一种方式，采用异步通信方式。</p>
+<span id="more"></span>
+
+
+<h2 id="流程"><a href="#流程" class="headerlink" title="流程"></a>流程</h2><ol>
+<li>应用程序注册信号，信号事件发生后，内核将信号置为pending状态</li>
+<li>在中断返回或者系统调用返回时，查看pending的信号，内核在应用程序的栈上构建一个信号处理栈帧</li>
+<li>然后通过中断返回或者系统调用返回到用户态，执行信号处理函数</li>
+<li>执行信号处理函数之后，再次通过<code>sigreturn</code>系统调用返回到内核</li>
+<li>在内核中再次返回到应用程序被中断打断的地方或者系统调用返回的地方接着运行</li>
+</ol>
+<p><img src="/uploads/2024/11/2288457594.png" alt="faea12e3fcfe5db324a9dc40bb7ed272.png"></p>
+<h2 id="信号处理"><a href="#信号处理" class="headerlink" title="信号处理"></a>信号处理</h2><p>在进程<code>task_struct</code>结构体中有一个未决信号的成员变量 <code>struct sigpending pending</code>。每个信号在进程中注册都会把信号值加入到进程的未决信号集。</p>
+<p>内核处理进程收到的signal是在当前进程的上下文，故进程必须是Running状态。当进程唤醒或者调度后获取CPU，则会从内核态转到用户态时检测是否有signal等待处理，处理完，进程会把相应的未决信号从链表中去掉。</p>
+<h3 id="信号处理方式"><a href="#信号处理方式" class="headerlink" title="信号处理方式"></a>信号处理方式</h3><ol>
+<li>默认：接收到信号后按默认的行为处理该信号。其中，部分信号无法修改其默认的处理行为，例如<code>SIGKILL</code>等。</li>
+<li>自定义：自定义信号处理函数（Handler）执行特定操作。</li>
+<li>忽略：相当于信号没有发出。部分信号的默认操作就是忽略，例如<code>SIGCHLD</code>等。</li>
+</ol>
+<h3 id="自定义信号处理方式"><a href="#自定义信号处理方式" class="headerlink" title="自定义信号处理方式"></a>自定义信号处理方式</h3><p>信号处理程序会在接收到信号的线程中执行，而不是在子线程中。也就是说，<strong>信号处理程序是在同一线程的上下文中运行</strong>的。</p>
+<h4 id="signal-and-sigaction"><a href="#signal-and-sigaction" class="headerlink" title="signal and sigaction"></a><code>signal</code> and <code>sigaction</code></h4><p>这两个都是修改信号处理方式的系统调用。</p>
+<ul>
+<li><code>void( *signal(int sig,void(*handler)(int))(int)</code><ul>
+<li>只能设置信号及其处理Handler，每个Kernel的实现方式可能不同，因此不建议使用。</li>
+<li>handler赋值为常数<code>SIG_IGN</code>表示忽略信号，赋值为常数<code>SIG_DFL</code>表示执行系统默认动作，赋值为一个函数指针表示用自定义函数捕捉信号。</li>
+</ul>
+</li>
+<li><code>int sigaction(int sig,const struct sigaction *act,struct sigaction *oldact)</code><ul>
+<li><code>act</code>: 指向 <code>sigaction</code> 结构体的指针，该结构体定义了信号的处理方式。如果不需要改变信号处理方式，可以传递 <code>NULL</code></li>
+<li><code>oldact</code>: 指向 <code>sigaction</code> 结构体的指针，用于存储信号的旧处理方式。如果不需要获取旧的处理方式，可以传递 <code>NULL</code></li>
+</ul>
+</li>
+</ul>
+<h4 id="struct-sigaction"><a href="#struct-sigaction" class="headerlink" title="struct sigaction"></a><code>struct sigaction</code></h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">sigaction</span> &#123;</span></span><br><span class="line">    <span class="type">void</span>     (*sa_handler)(<span class="type">int</span>);</span><br><span class="line">    <span class="type">void</span>     (*sa_sigaction)(<span class="type">int</span>, <span class="type">siginfo_t</span> *, <span class="type">void</span> *);</span><br><span class="line">    <span class="type">sigset_t</span>   sa_mask;</span><br><span class="line">    <span class="type">int</span>        sa_flags;</span><br><span class="line">    <span class="type">void</span>     (*sa_restorer)(<span class="type">void</span>);</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li><p>不要同时赋值给 <code>sa_handler</code> 和 <code>sa_sigaction</code></p>
+</li>
+<li><p><code>sa_handler</code> 指定与 <code>signum</code> 相关联的动作</p>
+<ul>
+<li>赋值为常数<code>SIG_IGN</code>表示忽略信号</li>
+<li>赋值为常数<code>SIG_DFL</code>表示执行系统默认动作</li>
+<li>赋值为一个函数指针表示用自定义函数捕捉信号</li>
+</ul>
+</li>
+<li><p><code>sa_sigaction</code>只有在<code>sa_flags</code>指定了<code>SA_SIGINFO</code>时才能使用，需要的函数原型如下</p>
+  <figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">handler</span><span class="params">(<span class="type">int</span> sig, <span class="type">siginfo_t</span> *info, <span class="type">void</span> *ucontext)</span> &#123; ... &#125;</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li><code>sig</code> 引发处理程序的信号编号</li>
+<li><code>info</code> 指向 <code>siginfo_t</code> 的指针，它是一个结构体，包含有关信号的更多信息</li>
+<li><code>ucontext</code> 这是一个指向<code>ucontext_t</code>结构体的指针，转换为<code>void *</code>。这个字段指向的结构包含由内核在用户空间栈上保存的信号上下文信息</li>
+</ul>
+</li>
+<li><p><code>sa_mask</code>字段表示在信号处理程序执行期间应该被屏蔽的任何信号。</p>
+</li>
+<li><p><code>sa_flags</code>字段确定了几个不同的值，但其中重要的是是否可以获取扩展信息（ <code>SA_SIGINFO</code> ），以及是否自动重启被信号中断的系统调用（ <code>SA_RESTART</code> ）。否则，中断的系统调用将失败，因此自动重启显然是更好的方法。</p>
+</li>
+</ul>
+<h4 id="struct-siginfo"><a href="#struct-siginfo" class="headerlink" title="struct siginfo"></a><code>struct siginfo</code></h4><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">siginfo</span> &#123;</span></span><br><span class="line">	<span class="class"><span class="keyword">union</span> &#123;</span></span><br><span class="line">		__SIGINFO;</span><br><span class="line">		<span class="type">int</span> _si_pad[SI_MAX_SIZE/<span class="keyword">sizeof</span>(<span class="type">int</span>)];</span><br><span class="line">	&#125;;</span><br><span class="line">&#125; __ARCH_SI_ATTRIBUTES <span class="type">siginfo_t</span>;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">ifndef</span> __ARCH_HAS_SWAPPED_SIGINFO</span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> __SIGINFO 			\</span></span><br><span class="line"><span class="meta">struct &#123;				\</span></span><br><span class="line"><span class="meta">	int si_signo;			\</span></span><br><span class="line"><span class="meta">	int si_errno;			\</span></span><br><span class="line"><span class="meta">	int si_code;			\</span></span><br><span class="line"><span class="meta">	union __sifields _sifields;	\</span></span><br><span class="line"><span class="meta">&#125;</span></span><br><span class="line"><span class="meta">#<span class="keyword">else</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> __SIGINFO 			\</span></span><br><span class="line"><span class="meta">struct &#123;				\</span></span><br><span class="line"><span class="meta">	int si_signo;			\</span></span><br><span class="line"><span class="meta">	int si_code;			\</span></span><br><span class="line"><span class="meta">	int si_errno;			\</span></span><br><span class="line"><span class="meta">	union __sifields _sifields;	\</span></span><br><span class="line"><span class="meta">&#125;</span></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span> <span class="comment">/* __ARCH_HAS_SWAPPED_SIGINFO */</span></span></span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">union</span> __<span class="title">sifields</span> &#123;</span></span><br><span class="line">	<span class="comment">/* kill() */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">		<span class="type">__kernel_pid_t</span> _pid;	<span class="comment">/* sender&#x27;s pid */</span></span><br><span class="line">		<span class="type">__kernel_uid32_t</span> _uid;	<span class="comment">/* sender&#x27;s uid */</span></span><br><span class="line">	&#125; _kill;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* POSIX.1b timers */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">		<span class="type">__kernel_timer_t</span> _tid;	<span class="comment">/* timer id */</span></span><br><span class="line">		<span class="type">int</span> _overrun;		<span class="comment">/* overrun count */</span></span><br><span class="line">		<span class="type">sigval_t</span> _sigval;	<span class="comment">/* same as below */</span></span><br><span class="line">		<span class="type">int</span> _sys_private;       <span class="comment">/* not to be passed to user */</span></span><br><span class="line">	&#125; _timer;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* POSIX.1b signals */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">		<span class="type">__kernel_pid_t</span> _pid;	<span class="comment">/* sender&#x27;s pid */</span></span><br><span class="line">		<span class="type">__kernel_uid32_t</span> _uid;	<span class="comment">/* sender&#x27;s uid */</span></span><br><span class="line">		<span class="type">sigval_t</span> _sigval;</span><br><span class="line">	&#125; _rt;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* SIGCHLD */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">		<span class="type">__kernel_pid_t</span> _pid;	<span class="comment">/* which child */</span></span><br><span class="line">		<span class="type">__kernel_uid32_t</span> _uid;	<span class="comment">/* sender&#x27;s uid */</span></span><br><span class="line">		<span class="type">int</span> _status;		<span class="comment">/* exit code */</span></span><br><span class="line">		__ARCH_SI_CLOCK_T _utime;</span><br><span class="line">		__ARCH_SI_CLOCK_T _stime;</span><br><span class="line">	&#125; _sigchld;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* SIGILL, SIGFPE, SIGSEGV, SIGBUS, SIGTRAP, SIGEMT */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">		<span class="type">void</span> *_addr; <span class="comment">/* faulting insn/memory ref. */</span></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> __ARCH_SI_TRAPNO</span></span><br><span class="line">		<span class="type">int</span> _trapno;	<span class="comment">/* TRAP # which caused the signal */</span></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">ifdef</span> __ia64__</span></span><br><span class="line">		<span class="type">int</span> _imm;		<span class="comment">/* immediate value for &quot;break&quot; */</span></span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span> _flags;	<span class="comment">/* see ia64 si_flags */</span></span><br><span class="line">		<span class="type">unsigned</span> <span class="type">long</span> _isr;	<span class="comment">/* isr */</span></span><br><span class="line"><span class="meta">#<span class="keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> __ADDR_BND_PKEY_PAD  (__alignof__(void *) &lt; sizeof(short) ? \</span></span><br><span class="line"><span class="meta">			      sizeof(short) : __alignof__(void *))</span></span><br><span class="line">		<span class="class"><span class="keyword">union</span> &#123;</span></span><br><span class="line">			<span class="comment">/*</span></span><br><span class="line"><span class="comment">			 * used when si_code=BUS_MCEERR_AR or</span></span><br><span class="line"><span class="comment">			 * used when si_code=BUS_MCEERR_AO</span></span><br><span class="line"><span class="comment">			 */</span></span><br><span class="line">			<span class="type">short</span> _addr_lsb; <span class="comment">/* LSB of the reported address */</span></span><br><span class="line">			<span class="comment">/* used when si_code=SEGV_BNDERR */</span></span><br><span class="line">			<span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">				<span class="type">char</span> _dummy_bnd[__ADDR_BND_PKEY_PAD];</span><br><span class="line">				<span class="type">void</span> *_lower;</span><br><span class="line">				<span class="type">void</span> *_upper;</span><br><span class="line">			&#125; _addr_bnd;</span><br><span class="line">			<span class="comment">/* used when si_code=SEGV_PKUERR */</span></span><br><span class="line">			<span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">				<span class="type">char</span> _dummy_pkey[__ADDR_BND_PKEY_PAD];</span><br><span class="line">				__u32 _pkey;</span><br><span class="line">			&#125; _addr_pkey;</span><br><span class="line">		&#125;;</span><br><span class="line">	&#125; _sigfault;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* SIGPOLL */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">		__ARCH_SI_BAND_T _band;	<span class="comment">/* POLL_IN, POLL_OUT, POLL_MSG */</span></span><br><span class="line">		<span class="type">int</span> _fd;</span><br><span class="line">	&#125; _sigpoll;</span><br><span class="line"></span><br><span class="line">	<span class="comment">/* SIGSYS */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">		<span class="type">void</span> *_call_addr; <span class="comment">/* calling user insn */</span></span><br><span class="line">		<span class="type">int</span> _syscall;	<span class="comment">/* triggering system call number */</span></span><br><span class="line">		<span class="type">unsigned</span> <span class="type">int</span> _arch;	<span class="comment">/* AUDIT_ARCH_* of syscall */</span></span><br><span class="line">	&#125; _sigsys;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>存储signal发出信号时的信息。</p>
+<blockquote>
+<p>[!NOTE]</p>
+<p>这里可以考虑加入<code>timestamp</code>字段以支持记录信号发出时的时间戳。具体记录时间戳的函数位置暂时未知。</p>
+<p>以解决ASYNC时顺序倒挂的问题。同时兼用ASYMM性能好的优势。</p>
+</blockquote>
+<h3 id="写一个高级的Signal-Handler"><a href="#写一个高级的Signal-Handler" class="headerlink" title="写一个高级的Signal Handler"></a>写一个高级的Signal Handler</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;signal.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;string.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;stdio.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">handle_prof_signal</span><span class="params">(<span class="type">int</span> sig_no, <span class="type">siginfo_t</span>* info, <span class="type">void</span> *context)</span></span><br><span class="line">&#123;</span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">&quot;Done\n&quot;</span>);</span><br><span class="line">  <span class="built_in">exit</span>(<span class="number">1</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> <span class="title function_">main</span><span class="params">()</span></span><br><span class="line">&#123;</span><br><span class="line">  <span class="class"><span class="keyword">struct</span> <span class="title">sigaction</span> <span class="title">sig_action</span>;</span></span><br><span class="line">  <span class="built_in">memset</span>(&amp;sig_action, <span class="number">0</span>, <span class="keyword">sizeof</span>(sig_action));</span><br><span class="line">  sig_action.sa_sigaction = handle_prof_signal;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 重启被中断的系统调用，获取SIGINFO</span></span><br><span class="line">  sig_action.sa_flags = SA_RESTART | SA_SIGINFO;</span><br><span class="line"></span><br><span class="line">  sigemptyset(&amp;sig_action.sa_mask);</span><br><span class="line">  sigaction(SIGPROF, &amp;sig_action, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">  <span class="class"><span class="keyword">struct</span> <span class="title">itimerval</span> <span class="title">timeout</span>=</span>&#123;<span class="number">0</span>&#125;;</span><br><span class="line">  timeout.it_value.tv_sec=<span class="number">1</span>;</span><br><span class="line">  setitimer(ITIMER_PROF, &amp;timeout, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">  <span class="keyword">do</span> &#123; &#125; <span class="keyword">while</span>(<span class="number">1</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="Async-safe函数"><a href="#Async-safe函数" class="headerlink" title="Async-safe函数"></a>Async-safe函数</h4><p>异步安全函数是指即使在不同的执行上下文中被调用，也能安全地操作共享资源的函数。许多系统调用在信号处理程序中是不安全的。</p>
+<p>使函数在异步环境下安全运行的一种方法是，在函数执行期间阻止信号的到达，并在函数离开关键代码段后才重新启用信号。这可以通过使用<code>sigprocmask()</code>函数来实现。</p>
+<h4 id="防止循环调用Signal-Handler"><a href="#防止循环调用Signal-Handler" class="headerlink" title="防止循环调用Signal Handler"></a>防止循环调用Signal Handler</h4><p>主要看<code>ucontext</code>上下文。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;signal.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;string.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;unistd.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;sys/ucontext.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">handle_prof_signal</span><span class="params">(<span class="type">int</span> sig_no, <span class="type">siginfo_t</span>* info, <span class="type">void</span> *vcontext)</span></span><br><span class="line">&#123;</span><br><span class="line">  <span class="type">char</span> output[<span class="number">100</span>];</span><br><span class="line">  <span class="type">ucontext_t</span> *context = (<span class="type">ucontext_t</span>*)vcontext;</span><br><span class="line">  <span class="type">unsigned</span> <span class="type">long</span> pc = context-&gt;uc_mcontext.gregs[REG_PC];</span><br><span class="line"></span><br><span class="line">  <span class="built_in">snprintf</span>(output,<span class="number">100</span>,<span class="string">&quot;Illegal instruction at %lx value %lx\n&quot;</span>,pc,*(<span class="type">int</span>*)pc);</span><br><span class="line">  write(<span class="number">1</span>,output,<span class="built_in">strlen</span>(output)+<span class="number">1</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 修改上下文中的PC和nPC，使得其跳过当前指令继续执行</span></span><br><span class="line">  context-&gt;uc_mcontext.gregs[REG_PC] = context-&gt;uc_mcontext.gregs[REG_nPC];</span><br><span class="line">  context-&gt;uc_mcontext.gregs[REG_nPC] = context-&gt;uc_mcontext.gregs[REG_nPC]+<span class="number">4</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="type">void</span> <span class="title function_">main</span><span class="params">()</span></span><br><span class="line">&#123;</span><br><span class="line">  <span class="class"><span class="keyword">struct</span> <span class="title">sigaction</span> <span class="title">sig_action</span>;</span></span><br><span class="line">  <span class="built_in">memset</span>(&amp;sig_action, <span class="number">0</span>, <span class="keyword">sizeof</span>(sig_action));</span><br><span class="line">  sig_action.sa_sigaction = handle_prof_signal;</span><br><span class="line">  sig_action.sa_flags = SA_RESTART | SA_SIGINFO;</span><br><span class="line">  sigemptyset(&amp;sig_action.sa_mask);</span><br><span class="line">  sigaction(SIGILL, &amp;sig_action, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">  timeout.it_value.tv_sec=<span class="number">1</span>;</span><br><span class="line">  setitimer(ITIMER_PROF, &amp;timeout, <span class="number">0</span>);</span><br><span class="line">  <span class="keyword">asm</span>(<span class="string">&quot;.word 0x00000000&quot;</span>);</span><br><span class="line">  <span class="keyword">asm</span>(<span class="string">&quot;.word 0x00000000&quot;</span>);</span><br><span class="line">  <span class="keyword">asm</span>(<span class="string">&quot;.word 0x00000000&quot;</span>);</span><br><span class="line">  <span class="keyword">asm</span>(<span class="string">&quot;.word 0x00000000&quot;</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<ul>
+<li><code>ucontext_t</code> 结构体用于获取当前执行上下文，包括程序计数器（PC）和其它寄存器。</li>
+<li><code>pc</code> 是当前程序计数器的值，指向出错的指令。</li>
+</ul>
+<h4 id="不可重入问题"><a href="#不可重入问题" class="headerlink" title="不可重入问题"></a>不可重入问题</h4><p>如果一个函数只访问自己的局部变量或参数，则称为可重入（<code>Reentrant</code>）函数。</p>
+<p>当捕捉到信号时，不论进程的主控制流程当前执行到哪儿，都会先跳到信号处理函数中执行，从信号处理函数返回后再继续执行主控制流程。信号处理函数是一个单独的控制流程，因为它和主控制流程是异步的，二者不存在调用和被调用的关系，并且使用不同的堆栈空间。引入了信号处理函数使得一个进程具有多个控制流程，如果这些控制流程访问相同的全局资源（全局变量、硬件资源等），就有可能出现冲突。</p>
+<p>如果一个函数符合以下条件之一则是不可重入的：</p>
+<ul>
+<li>调用了<code>malloc</code>或<code>free</code>，因为<code>malloc</code>也是用全局链表来管理堆的。</li>
+<li>调用了标准I&#x2F;O库函数。标准I&#x2F;O库的很多实现都以不可重入的方式使用全局数据结构。</li>
+</ul>
+<h2 id="ucontext"><a href="#ucontext" class="headerlink" title="ucontext"></a>ucontext</h2><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">ucontext</span> &#123;</span></span><br><span class="line">	<span class="type">unsigned</span> <span class="type">long</span>	  uc_flags;</span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">ucontext</span>	 *<span class="title">uc_link</span>;</span></span><br><span class="line">	<span class="type">stack_t</span>		  uc_stack;</span><br><span class="line">	<span class="type">sigset_t</span>	  uc_sigmask;</span><br><span class="line">	<span class="comment">/* glibc uses a 1024-bit sigset_t */</span></span><br><span class="line">	__u8		  __unused[<span class="number">1024</span> / <span class="number">8</span> - <span class="keyword">sizeof</span>(<span class="type">sigset_t</span>)];</span><br><span class="line">	<span class="comment">/* last for future expansion */</span></span><br><span class="line">	<span class="class"><span class="keyword">struct</span> <span class="title">sigcontext</span> <span class="title">uc_mcontext</span>;</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * Signal context structure - contains all info to do with the state</span></span><br><span class="line"><span class="comment"> * before the signal handler was invoked.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">sigcontext</span> &#123;</span></span><br><span class="line">	__u64 fault_address;</span><br><span class="line">	<span class="comment">/* AArch64 registers */</span></span><br><span class="line">	__u64 regs[<span class="number">31</span>];</span><br><span class="line">	__u64 sp;</span><br><span class="line">	__u64 pc;</span><br><span class="line">	__u64 pstate;</span><br><span class="line">	<span class="comment">/* 4K reserved for FP/SIMD state and future expansion */</span></span><br><span class="line">	__u8 __reserved[<span class="number">4096</span>] __attribute__((__aligned__(<span class="number">16</span>)));</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>这里给出访问ARM64的PC和opcode及其基址的代码：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">ucontext</span> *<span class="title">uc</span> =</span> (<span class="keyword">struct</span> ucontext *)context;</span><br><span class="line"><span class="type">uint64_t</span> pc = uc-&gt;uc_mcontext.pc;   <span class="comment">// 获取程序计数器的值</span></span><br><span class="line"><span class="type">uint32_t</span> opcode;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 读取内存中的指令（假设可以安全访问该地址）</span></span><br><span class="line">opcode = *(<span class="type">uint32_t</span> *)pc;  <span class="comment">// 从 pc 地址读取 4 字节的指令</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 输出指令和地址</span></span><br><span class="line"><span class="built_in">printf</span>(<span class="string">&quot;Received signal %d\n&quot;</span>, sig);</span><br><span class="line"><span class="built_in">printf</span>(<span class="string">&quot;PC: 0x%llx, Opcode: 0x%x\n&quot;</span>, pc, opcode);</span><br></pre></td></tr></table></figure>
+
+<p>由于ARM64的指令定长，可以使用以下方式进行指令的解码：</p>
+<blockquote>
+<p>未完待续</p>
+</blockquote>
+<h2 id="ref"><a href="#ref" class="headerlink" title="ref"></a>ref</h2><p><a target="_blank" rel="noopener" href="https://akaedu.github.io/book/ch33s04.html#id2885439">4. 捕捉信号</a></p>
+<p><a target="_blank" rel="noopener" href="https://www.cnblogs.com/ink19/p/ucontext.html">ucontext的简单介绍 - ink19 - 博客园</a></p>
+<p><a target="_blank" rel="noopener" href="https://blog.csdn.net/qq_44443986/article/details/117739157">linux ucontext族函数的原理及使用_ucontext排查短促-CSDN博客</a></p>
+<p><a target="_blank" rel="noopener" href="https://gityuan.com/2015/12/20/signal/">Linux信号(signal)机制 - Gityuan博客 | 袁辉辉的技术博客</a></p>
+<p><a target="_blank" rel="noopener" href="https://man7.org/linux/man-pages/man7/signal.7.html">signal(7) - Linux manual page</a></p>
+<p><a target="_blank" rel="noopener" href="https://blog.csdn.net/weixin_43412488/article/details/135126064">Linux kernel signal原理_linux kernel 如何 判断 收到的是什么 signal-CSDN博客</a></p>
+<p><a target="_blank" rel="noopener" href="https://aeb.win.tue.nl/linux/lk/lk-5.html">The Linux kernel: Signals</a></p>
+<p><a target="_blank" rel="noopener" href="https://man7.org/linux/man-pages/man2/sigaction.2.html">sigaction(2) - Linux manual page</a></p>
+<p><a target="_blank" rel="noopener" href="https://hackmd.io/@happy-kernel-learning/Bybn-8yT8">Signals - HackMD</a></p>
+<p><a target="_blank" rel="noopener" href="https://www.oracle.com/technical-resources/articles/it-infrastructure/dev-signal-handlers-studio.html">How to Write Advanced Signal Handlers</a></p>
+
+  </div>
+</article>
+
+
+
+    <div class="blog-post-comments">
+        <div id="giscus_thread"
+             data-giscus-light-theme="light"
+             data-giscus-dark-theme="dark">
+            <noscript>加载评论需要在浏览器启用 JavaScript 脚本支持。</noscript>
+        </div>
+    </div>
+
+
+
+        <footer id="footer">
+  <div class="footer-main">
+    <div class="footer-left">
+      Copyright &copy;
+      
+      
+      2017-2026
+      Jimmy Ho
+      <div class="footer-version">当前呈现版本：1e36370a</div>
+    </div>
+    <div class="footer-right">
+      <nav>
+        <ul>
+          <li><a target="_blank" rel="noopener" href="https://status.jimmyho.net/">服务器状态</a></li><!--
+       --><li><a href="/sitemap.xml">网站地图</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+  <div class="footer-license">
+    除非<a target="_blank" rel="noopener" href="https://creativecommons.org/policies/#license">另有说明</a>，本网站内容均采用
+    <a target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans" rel="license noopener">知识共享署名—非商业性使用—相同方式共享 4.0 国际许可协议（CC BY-NC-SA 4.0）</a>许可。
+  </div>
+</footer>
+
+    </div>
+    <div id="floating-menu" class="floating-menu">
+  <div id="floating-menu-actions" class="floating-menu-actions" aria-hidden="true">
+    
+      <a class="floating-action" href="/2026/07/19/flashattention-guide/" aria-label="上一篇" title="上一篇">
+        <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+      </a>
+    
+    
+      <a class="floating-action" href="/2024/09/16/01242-lto2024/" aria-label="下一篇" title="下一篇">
+        <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+      </a>
+    
+    <button id="floating-top" class="floating-action" type="button" aria-label="返回顶部" title="返回顶部" hidden>
+      <i class="fa-solid fa-chevron-up" aria-hidden="true"></i>
+    </button>
+    
+      <button id="floating-share-toggle" class="floating-action" type="button" aria-label="分享文章" title="分享文章" data-share-title="Linux Signal 及其处理机制" data-share-url="https://blog.jimmyho.net/2024/11/05/01268-linux-signal/" data-share-copied="复制成功！">
+        <i class="fa-solid fa-share-alt" aria-hidden="true"></i>
+      </button>
+    
+    <button id="theme-toggle" class="floating-action" type="button" aria-label="Switch to light mode" title="Switch to light mode">
+      <i class="fa-solid fa-sun" aria-hidden="true"></i>
+    </button>
+    <a class="floating-action" href="/" aria-label="首页" title="首页">
+      <i class="fa-solid fa-home" aria-hidden="true"></i>
+    </a>
+  </div>
+
+  <button id="floating-menu-toggle" class="theme-toggle" type="button" aria-label="菜单" title="菜单" aria-expanded="false" aria-controls="floating-menu-actions">
+    <i class="fa-solid fa-bars" aria-hidden="true"></i>
+  </button>
+  <div id="floating-share-status" class="floating-share-status" role="status" aria-live="polite"></div>
+</div>
+
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script>
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script>
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"复制到粘贴板！\">";
+    btn += '<i class="fa-regular fa-clone"></i>';
+    btn += '</span>';
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "复制成功！");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+
+<script src="/js/theme-toggle.js"></script>
+
+<!-- search -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Disqus Comments -->
+
+<!-- utterances Comments -->
+
+<!-- Giscus Comments -->
+
+    <script type="text/javascript">
+      (function(){
+          var container = document.getElementById('giscus_thread');
+          if (!container) return;
+
+          var currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+          var lightTheme = container.getAttribute('data-giscus-light-theme') || 'light';
+          var darkTheme = container.getAttribute('data-giscus-dark-theme') || 'dark';
+          var script = document.createElement('script');
+
+          script.src = 'https://giscus.app/client.js';
+          script.setAttribute('data-repo', 'jimmypury/blog-comments');
+          script.setAttribute('data-repo-id', 'R_kgDOTWOXyQ');
+          script.setAttribute('data-category', 'Announcements');
+          script.setAttribute('data-category-id', 'DIC_kwDOTWOXyc4DBCtB');
+          script.setAttribute('data-mapping', 'pathname');
+          script.setAttribute('data-strict', '1');
+          script.setAttribute('data-reactions-enabled', '1');
+          script.setAttribute('data-emit-metadata', '0');
+          script.setAttribute('data-input-position', 'bottom');
+          script.setAttribute('data-theme', currentTheme === 'light' ? lightTheme : darkTheme);
+          script.setAttribute('data-lang', 'zh-CN');
+          script.setAttribute('data-loading', 'lazy');
+          script.setAttribute('crossorigin', 'anonymous');
+          script.async = true;
+
+          container.appendChild(script);
+      }());
+  </script>
+
+
+</body>
+</html>

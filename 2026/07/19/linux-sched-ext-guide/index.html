@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang=zh>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="本文以 Linux 6.12 合入主线的 sched_ext (SCX) 框架为基础，结合内核自带的 scx_simple 调度器源码，从零讲解如何用 BPF 编写一个安全的、可动态加载的自定义 CPU 调度器。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Linux sched_ext：用 BPF 编写用户态调度器完整教程">
+<meta property="og:url" content="https://blog.jimmyho.net/2026/07/19/linux-sched-ext-guide/">
+<meta property="og:site_name" content="Jimmy&#39;s Blog">
+<meta property="og:description" content="本文以 Linux 6.12 合入主线的 sched_ext (SCX) 框架为基础，结合内核自带的 scx_simple 调度器源码，从零讲解如何用 BPF 编写一个安全的、可动态加载的自定义 CPU 调度器。">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-07-19T07:00:00.000Z">
+<meta property="article:modified_time" content="2026-07-19T07:00:00.000Z">
+<meta property="article:author" content="Jimmy Ho">
+<meta property="article:tag" content="BPF">
+<meta property="article:tag" content="Kernel">
+<meta property="article:tag" content="Linux">
+<meta property="article:tag" content="Scheduler">
+<meta property="article:tag" content="sched_ext">
+<meta name="twitter:card" content="summary">
+    
+    
+    
+      <link rel="canonical" href="https://blog.jimmyho.net/2026/07/19/linux-sched-ext-guide/">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>Linux sched_ext：用 BPF 编写用户态调度器完整教程</title>
+    <script>
+      (function() {
+        var theme = 'dark';
+        try {
+          theme = localStorage.getItem('cactus-theme') || 'dark';
+        } catch (error) {}
+        document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+      }());
+    </script>
+    <!-- async scripts -->
+    <!-- Google Analytics -->
+
+
+    <!-- Umami Analytics -->
+
+
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- rss -->
+    
+    
+	<!-- mathjax -->
+	
+		<script type="text/x-mathjax-config">
+		  MathJax.Hub.Config({
+			tex2jax: {
+			  skipTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
+			  inlineMath: [['$','$']]
+			}
+		  });
+		</script>
+		<script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-MML-AM_CHTML' async></script>
+	
+<meta name="generator" content="Hexo 8.1.2"><!-- post-notices:style -->
+<style>
+.post-notice {
+  margin: 0 0 1.2em;
+  padding: 0.85em 1em;
+  border-left: 4px solid #d97706;
+  background: #fff7ed;
+  color: #7c2d12;
+  line-height: 1.7;
+}
+.post-notice p {
+  margin: 0;
+}
+.post-notice + .post-notice {
+  margin-top: -0.45em;
+}
+</style>
+</head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  
+  <div id="toc">
+    <ol class="toc">
+      <li class="toc-item toc-level-1 toc-post-title">
+        <a class="toc-link" href="#post-title"><span class="toc-text">Linux sched_ext：用 BPF 编写用户态调度器完整教程</span></a>
+        
+          <div class="toc-post-children">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88%E9%9C%80%E8%A6%81-sched-ext%EF%BC%9F"><span class="toc-number">1.</span> <span class="toc-text">1. 为什么需要 sched_ext？</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-1-%E4%BC%A0%E7%BB%9F%E8%B0%83%E5%BA%A6%E5%99%A8%E7%9A%84%E7%97%9B%E7%82%B9"><span class="toc-number">1.1.</span> <span class="toc-text">1.1 传统调度器的痛点</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#1-2-%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%8D%E8%83%BD%E7%94%A8%E5%86%85%E6%A0%B8%E6%A8%A1%E5%9D%97%EF%BC%9F"><span class="toc-number">1.2.</span> <span class="toc-text">1.2 为什么不能用内核模块？</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#1-3-sched-ext-%E7%9A%84%E8%A7%A3%E5%86%B3%E6%80%9D%E8%B7%AF"><span class="toc-number">1.3.</span> <span class="toc-text">1.3 sched_ext 的解决思路</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-%E7%8E%AF%E5%A2%83%E5%87%86%E5%A4%87"><span class="toc-number">2.</span> <span class="toc-text">2. 环境准备</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-%E5%86%85%E6%A0%B8%E8%A6%81%E6%B1%82"><span class="toc-number">2.1.</span> <span class="toc-text">2.1 内核要求</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-%E6%9E%84%E5%BB%BA%E5%B7%A5%E5%85%B7%E9%93%BE"><span class="toc-number">2.2.</span> <span class="toc-text">2.2 构建工具链</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#3-%E6%9E%B6%E6%9E%84%E5%85%A8%E6%99%AF"><span class="toc-number">3.</span> <span class="toc-text">3. 架构全景</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-1-%E4%B8%80%E4%B8%AA%E8%B0%83%E5%BA%A6%E5%99%A8-%E4%B8%A4%E4%B8%AA%E7%A8%8B%E5%BA%8F"><span class="toc-number">3.1.</span> <span class="toc-text">3.1 一个调度器 &#x3D; 两个程序</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-2-%E5%85%B3%E9%94%AE%E6%8A%BD%E8%B1%A1%EF%BC%9ADSQ%EF%BC%88Dispatch-Queue%EF%BC%8C%E8%B0%83%E5%BA%A6%E9%98%9F%E5%88%97%EF%BC%89"><span class="toc-number">3.2.</span> <span class="toc-text">3.2 关键抽象：DSQ（Dispatch Queue，调度队列）</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-%E6%A0%B8%E5%BF%83%E6%A6%82%E5%BF%B5%EF%BC%9ADSQ-%E8%AF%A6%E8%A7%A3"><span class="toc-number">4.</span> <span class="toc-text">4. 核心概念：DSQ 详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#4-1-%E4%B8%89%E7%A7%8D-DSQ-%E7%B1%BB%E5%9E%8B"><span class="toc-number">4.1.</span> <span class="toc-text">4.1 三种 DSQ 类型</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-2-DSQ-ID-%E7%BC%96%E7%A0%81"><span class="toc-number">4.2.</span> <span class="toc-text">4.2 DSQ ID 编码</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-3-%E6%A0%B8%E5%BF%83-DSQ-%E6%93%8D%E4%BD%9C-API"><span class="toc-number">4.3.</span> <span class="toc-text">4.3 核心 DSQ 操作 API</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-4-%E4%BB%BB%E5%8A%A1%E5%9C%A8-DSQ-%E4%B9%8B%E9%97%B4%E7%9A%84%E6%B5%81%E5%8A%A8"><span class="toc-number">4.4.</span> <span class="toc-text">4.4 任务在 DSQ 之间的流动</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#5-%E5%AE%8C%E6%95%B4%E7%9A%84-sched-ext-ops-%E5%9B%9E%E8%B0%83%E8%A1%A8"><span class="toc-number">5.</span> <span class="toc-text">5. 完整的 sched_ext_ops 回调表</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#5-1-%E8%B0%83%E5%BA%A6%E6%A0%B8%E5%BF%83%E5%9B%9E%E8%B0%83%EF%BC%88%E6%8C%89%E8%A7%A6%E5%8F%91%E9%A1%BA%E5%BA%8F%EF%BC%89"><span class="toc-number">5.1.</span> <span class="toc-text">5.1 调度核心回调（按触发顺序）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-2-%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F%E5%9B%9E%E8%B0%83"><span class="toc-number">5.2.</span> <span class="toc-text">5.2 生命周期回调</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-3-cgroup-%E5%9B%9E%E8%B0%83%EF%BC%88%E9%9C%80%E8%A6%81-CONFIG-EXT-GROUP-SCHED%EF%BC%89"><span class="toc-number">5.3.</span> <span class="toc-text">5.3 cgroup 回调（需要 CONFIG_EXT_GROUP_SCHED）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-4-%E9%AB%98%E7%BA%A7%E5%9B%9E%E8%B0%83"><span class="toc-number">5.4.</span> <span class="toc-text">5.4 高级回调</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-5-%E9%87%8D%E8%A6%81%E8%AF%AD%E4%B9%89"><span class="toc-number">5.5.</span> <span class="toc-text">5.5 重要语义</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#6-%E4%BB%8E-scx-simple-%E5%85%A5%E6%89%8B%EF%BC%9A%E9%80%90%E8%A1%8C%E8%AF%A6%E8%A7%A3"><span class="toc-number">6.</span> <span class="toc-text">6. 从 scx_simple 入手：逐行详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#6-1-%E8%AE%B8%E5%8F%AF%E8%AF%81%E5%92%8C%E5%85%A8%E5%B1%80%E7%8A%B6%E6%80%81"><span class="toc-number">6.1.</span> <span class="toc-text">6.1 许可证和全局状态</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-2-%E8%87%AA%E5%AE%9A%E4%B9%89-DSQ-%E5%88%9B%E5%BB%BA"><span class="toc-number">6.2.</span> <span class="toc-text">6.2 自定义 DSQ 创建</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-3-select-cpu%EF%BC%9A%E5%BF%AB%E8%B7%AF%E5%BE%84%E2%80%94%E2%80%94%E7%9B%B4%E6%8E%A5%E6%8A%8A%E4%BB%BB%E5%8A%A1%E5%8F%91%E7%BB%99-idle-CPU"><span class="toc-number">6.3.</span> <span class="toc-text">6.3 select_cpu：快路径——直接把任务发给 idle CPU</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-4-enqueue%EF%BC%9A%E6%85%A2%E8%B7%AF%E5%BE%84%E2%80%94%E2%80%94%E5%B0%86%E4%BB%BB%E5%8A%A1%E6%94%BE%E5%85%A5%E5%85%A8%E5%B1%80%E9%98%9F%E5%88%97"><span class="toc-number">6.4.</span> <span class="toc-text">6.4 enqueue：慢路径——将任务放入全局队列</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-5-dispatch%EF%BC%9ACPU-%E7%A9%BA%E9%97%B2%E4%BA%86%EF%BC%8C%E7%BB%99%E5%AE%83%E6%89%BE%E6%B4%BB%E5%B9%B2"><span class="toc-number">6.5.</span> <span class="toc-text">6.5 dispatch：CPU 空闲了，给它找活干</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-6-running-stopping%EF%BC%9Avtime-%E8%AE%A1%E8%B4%B9"><span class="toc-number">6.6.</span> <span class="toc-text">6.6 running &#x2F; stopping：vtime 计费</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-7-enable%EF%BC%9A%E4%BB%BB%E5%8A%A1%E8%BF%9B%E5%85%A5%E6%97%B6%E7%9A%84%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="toc-number">6.7.</span> <span class="toc-text">6.7 enable：任务进入时的初始化</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-8-%E7%BB%84%E8%A3%85-ops-%E8%A1%A8"><span class="toc-number">6.8.</span> <span class="toc-text">6.8 组装 ops 表</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#7-BPF-%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84%E5%92%8C-Map-%E6%A8%A1%E5%BC%8F"><span class="toc-number">7.</span> <span class="toc-text">7. BPF 数据结构和 Map 模式</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#7-1-%E7%BB%9F%E8%AE%A1%E8%AE%A1%E6%95%B0%E5%99%A8%EF%BC%88PERCPU-ARRAY%EF%BC%89"><span class="toc-number">7.1.</span> <span class="toc-text">7.1 统计计数器（PERCPU_ARRAY）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-2-%E4%BB%BB%E5%8A%A1%E7%BA%A7%E4%B8%8A%E4%B8%8B%E6%96%87%EF%BC%88TASK-STORAGE%EF%BC%89"><span class="toc-number">7.2.</span> <span class="toc-text">7.2 任务级上下文（TASK_STORAGE）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-3-BPF-Arena%EF%BC%88%E5%A4%A7%E6%95%B0%E6%8D%AE%E7%BB%93%E6%9E%84%EF%BC%89"><span class="toc-number">7.3.</span> <span class="toc-text">7.3 BPF Arena（大数据结构）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-4-BPF-%E7%BA%A6%E6%9D%9F%E9%80%9F%E6%9F%A5"><span class="toc-number">7.4.</span> <span class="toc-text">7.4 BPF 约束速查</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#8-%E7%94%A8%E6%88%B7%E6%80%81%E5%8A%A0%E8%BD%BD%E5%99%A8%E6%A8%A1%E5%BC%8F"><span class="toc-number">8.</span> <span class="toc-text">8. 用户态加载器模式</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#8-1-%E6%A0%87%E5%87%86%E5%9B%9B%E6%AD%A5%E5%8A%A0%E8%BD%BD"><span class="toc-number">8.1.</span> <span class="toc-text">8.1 标准四步加载</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#8-2-UEI%EF%BC%88User-Exit-Info%EF%BC%89%E6%9C%BA%E5%88%B6"><span class="toc-number">8.2.</span> <span class="toc-text">8.2 UEI（User Exit Info）机制</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#8-3-%E9%80%9A%E8%BF%87-rodata-%E4%BC%A0%E9%80%92%E9%85%8D%E7%BD%AE"><span class="toc-number">8.3.</span> <span class="toc-text">8.3 通过 rodata 传递配置</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#9-%E6%9E%84%E5%BB%BA%E4%B8%8E%E8%BF%90%E8%A1%8C"><span class="toc-number">9.</span> <span class="toc-text">9. 构建与运行</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#9-1-%E6%9E%84%E5%BB%BA%E9%93%BE"><span class="toc-number">9.1.</span> <span class="toc-text">9.1 构建链</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#9-2-%E8%BF%90%E8%A1%8C%E5%92%8C%E7%9B%91%E6%8E%A7"><span class="toc-number">9.2.</span> <span class="toc-text">9.2 运行和监控</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#9-3-%E5%BA%94%E6%80%A5%E6%81%A2%E5%A4%8D"><span class="toc-number">9.3.</span> <span class="toc-text">9.3 应急恢复</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#10-%E8%BF%9B%E9%98%B6%EF%BC%9A%E7%94%9F%E4%BA%A7%E7%BA%A7%E8%B0%83%E5%BA%A6%E5%99%A8%E4%B8%80%E8%A7%88"><span class="toc-number">10.</span> <span class="toc-text">10. 进阶：生产级调度器一览</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#10-1-scx-layered%EF%BC%9A%E7%94%9F%E4%BA%A7%E7%BA%A7%E6%A1%88%E4%BE%8B"><span class="toc-number">10.1.</span> <span class="toc-text">10.1 scx_layered：生产级案例</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#11-%E4%BB%8E%E9%9B%B6%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E8%B0%83%E5%BA%A6%E5%99%A8%E7%9A%84%E6%A3%80%E6%9F%A5%E6%B8%85%E5%8D%95"><span class="toc-number">11.</span> <span class="toc-text">11. 从零实现一个调度器的检查清单</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%AC%AC%E4%B8%80%E6%AD%A5%EF%BC%9A%E6%90%AD%E5%BB%BA%E9%AA%A8%E6%9E%B6"><span class="toc-number">11.1.</span> <span class="toc-text">第一步：搭建骨架</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%AC%AC%E4%BA%8C%E6%AD%A5%EF%BC%9A%E5%AE%9E%E7%8E%B0%E6%9C%80%E5%B0%8F%E5%9B%9E%E8%B0%83%E9%9B%86"><span class="toc-number">11.2.</span> <span class="toc-text">第二步：实现最小回调集</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%AC%AC%E4%B8%89%E6%AD%A5%EF%BC%9A%E7%94%A8%E6%88%B7%E6%80%81%E5%8A%A0%E8%BD%BD%E5%99%A8"><span class="toc-number">11.3.</span> <span class="toc-text">第三步：用户态加载器</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#%E7%AC%AC%E5%9B%9B%E6%AD%A5%EF%BC%9A%E6%B5%8B%E8%AF%95"><span class="toc-number">11.4.</span> <span class="toc-text">第四步：测试</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#12-%E6%80%BB%E7%BB%93"><span class="toc-number">12.</span> <span class="toc-text">12. 总结</span></a></li></ol>
+          </div>
+        
+      </li>
+    </ol>
+  </div>
+</div>
+
+    
+    <div class="content index py4  post-content-shell">
+        
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 id="post-title" class="posttitle p-name" itemprop="name headline">
+        Linux sched_ext：用 BPF 编写用户态调度器完整教程
+    </h1>
+
+
+    <div class="meta">
+      <span class="author p-author h-card" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span class="p-name" itemprop="name">Jimmy Ho</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2026-07-19T07:00:00.000Z" class="dt-published" itemprop="datePublished">2026-07-19</time>
+        
+        (Updated: <time datetime="2026-07-19T07:00:00.000Z" class="dt-updated" itemprop="dateModified">2026-07-19</time>)
+        
+      
+    </div>
+
+
+      
+    <div class="article-category">
+        <i class="fa-solid fa-archive"></i>
+        <a class="category-link" href="/categories/%E8%AE%A1%E7%AE%97%E6%9C%BA/">计算机</a>
+    </div>
+
+
+      
+    <div class="article-tag">
+        <i class="fa-solid fa-tag"></i>
+        <a class="p-category" href="/tags/BPF/" rel="tag">BPF</a>, <a class="p-category" href="/tags/Kernel/" rel="tag">Kernel</a>, <a class="p-category" href="/tags/Linux/" rel="tag">Linux</a>, <a class="p-category" href="/tags/Scheduler/" rel="tag">Scheduler</a>, <a class="p-category" href="/tags/sched-ext/" rel="tag">sched_ext</a>
+    </div>
+
+
+    </div>
+  </header>
+  
+
+  <div class="content e-content" itemprop="articleBody">
+    <!-- post-notices:start -->
+<div class="note note-warning post-notice post-notice-ai">
+  <p>本文由 AI 生成，内容可能存在错误或不准确之处，请结合可靠来源核验后再作参考。</p>
+</div>
+<!-- post-notices:end -->
+<blockquote class="markdown-alert markdown-alert-note"><p class="markdown-alert-title">NOTE</p><p>本文以 Linux 6.12 合入主线的 <strong>sched_ext (SCX)</strong> 框架为基础，结合内核自带的 <code>scx_simple</code> 调度器源码，从零讲解如何用 BPF 编写一个安全的、可动态加载的自定义 CPU 调度器。</p>
+</blockquote>
+<span id="more"></span>
+
+<hr>
+<h2 id="1-为什么需要-sched-ext？"><a href="#1-为什么需要-sched-ext？" class="headerlink" title="1. 为什么需要 sched_ext？"></a>1. 为什么需要 sched_ext？</h2><h3 id="1-1-传统调度器的痛点"><a href="#1-1-传统调度器的痛点" class="headerlink" title="1.1 传统调度器的痛点"></a>1.1 传统调度器的痛点</h3><p>Linux 内核的 CFS（完全公平调度器）是普适性设计，但无法针对特定场景优化：</p>
+<ul>
+<li><strong>游戏&#x2F;低延迟应用</strong>：需要减少调度延迟而非公平分配</li>
+<li><strong>数据中心批处理</strong>：需要按租户&#x2F;cgroup 分层调度</li>
+<li><strong>NUMA 系统</strong>：需要精细化控制任务在 NUMA 节点间的分布</li>
+<li><strong>实验性调度策略</strong>：在真实生产环境快速迭代调度算法</li>
+</ul>
+<h3 id="1-2-为什么不能用内核模块？"><a href="#1-2-为什么不能用内核模块？" class="headerlink" title="1.2 为什么不能用内核模块？"></a>1.2 为什么不能用内核模块？</h3><p>调度类是编译时链接器段，不是运行时链表。没有 <code>register_sched_class()</code> 这样的接口，也没有导出任何调度类符号。这也是内核模块无法直接替换调度类的根本限制。</p>
+<h3 id="1-3-sched-ext-的解决思路"><a href="#1-3-sched-ext-的解决思路" class="headerlink" title="1.3 sched_ext 的解决思路"></a>1.3 sched_ext 的解决思路</h3><p><strong>不在现有调度类列表中插入新类，而是新增一个专用的”调度策略壳子”，让 BPF 程序定义这个壳子的行为。</strong></p>
+<ul>
+<li><strong>安全</strong>：BPF 验证器在加载时静态证明程序不会崩溃内核</li>
+<li><strong>动态</strong>：加载&#x2F;卸载不需要重启、不需要重新编译内核</li>
+<li><strong>可回退</strong>：BPF 调度器崩溃或卡死？所有任务自动回退到 CFS</li>
+<li><strong>高表达力</strong>：可以实现任何调度策略，从简单 FIFO 到复杂的虚拟时钟调度</li>
+</ul>
+<hr>
+<h2 id="2-环境准备"><a href="#2-环境准备" class="headerlink" title="2. 环境准备"></a>2. 环境准备</h2><h3 id="2-1-内核要求"><a href="#2-1-内核要求" class="headerlink" title="2.1 内核要求"></a>2.1 内核要求</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">Linux 6.12+ （sched_ext 主线合入版本）</span><br><span class="line"></span><br><span class="line">必需的内核配置：</span><br><span class="line">CONFIG_BPF=y</span><br><span class="line">CONFIG_BPF_SYSCALL=y</span><br><span class="line">CONFIG_BPF_JIT=y</span><br><span class="line">CONFIG_DEBUG_INFO_BTF=y</span><br><span class="line">CONFIG_SCHED_CLASS_EXT=y</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-2-构建工具链"><a href="#2-2-构建工具链" class="headerlink" title="2.2 构建工具链"></a>2.2 构建工具链</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 必需的构建依赖</span></span><br><span class="line"><span class="built_in">sudo</span> apt install clang llvm libbpf-dev bpftool make</span><br><span class="line"></span><br><span class="line"><span class="comment"># 源码位置</span></span><br><span class="line"><span class="built_in">cd</span> linux/tools/sched_ext/</span><br><span class="line">make scx_simple    <span class="comment"># 编译单个调度器</span></span><br><span class="line">make all           <span class="comment"># 编译所有 C 调度器</span></span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="3-架构全景"><a href="#3-架构全景" class="headerlink" title="3. 架构全景"></a>3. 架构全景</h2><h3 id="3-1-一个调度器-两个程序"><a href="#3-1-一个调度器-两个程序" class="headerlink" title="3.1 一个调度器 &#x3D; 两个程序"></a>3.1 一个调度器 &#x3D; 两个程序</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">┌──────────────────────────────────────────┐</span><br><span class="line">│            用户态（userspace）             │</span><br><span class="line">│                                          │</span><br><span class="line">│  scx_simple.c                            │</span><br><span class="line">│  ├─ OPEN: 解析 BPF ELF，创建 Map           │</span><br><span class="line">│  ├─ 设置 rodata 配置参数                   │</span><br><span class="line">│  ├─ LOAD: 提交给 BPF 验证器                │</span><br><span class="line">│  ├─ ATTACH: 挂载到 sched_ext → 激活！      │</span><br><span class="line">│  ├─ 主循环：读取统计，每秒打印               │</span><br><span class="line">│  └─ Ctrl+C → 卸载 → 回退 CFS              │</span><br><span class="line">└──────────┬───────────────────────────────┘</span><br><span class="line">           │ bpf() syscall</span><br><span class="line">┌──────────▼───────────────────────────────┐</span><br><span class="line">│             内核态（kernel）               │</span><br><span class="line">│                                          │</span><br><span class="line">│  sched_ext 框架 自动调用：                  │</span><br><span class="line">│  ┌────────────────────────────────────┐  │</span><br><span class="line">│  │  ① select_cpu  ─── 任务醒来选 CPU    │  │</span><br><span class="line">│  │  ② enqueue     ─── 任务入队         │  │</span><br><span class="line">│  │  ③ dispatch    ─── CPU 空闲，派发任务  │  │</span><br><span class="line">│  │  ④ running     ─── 任务开始执行       │  │</span><br><span class="line">│  │  ⑤ stopping    ─── 任务停止执行       │  │</span><br><span class="line">│  │  ⑥ tick        ─── 每个定时器滴答     │  │</span><br><span class="line">│  └────────────────────────────────────┘  │</span><br><span class="line">│                                          │</span><br><span class="line">│  进程退出 = 自动卸载，所有任务 → CFS       │</span><br><span class="line">└──────────────────────────────────────────┘</span><br></pre></td></tr></table></figure>
+
+<h3 id="3-2-关键抽象：DSQ（Dispatch-Queue，调度队列）"><a href="#3-2-关键抽象：DSQ（Dispatch-Queue，调度队列）" class="headerlink" title="3.2 关键抽象：DSQ（Dispatch Queue，调度队列）"></a>3.2 关键抽象：DSQ（Dispatch Queue，调度队列）</h3><p>DSQ 是 sched_ext 的核心抽象，解耦了”调度决策”和”实际 CPU 分配”：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">BPF 调度器 → 把任务插入 DSQ</span><br><span class="line">              ↓</span><br><span class="line">sched_ext 核心 → 从 DSQ 取出任务放到 CPU 上</span><br></pre></td></tr></table></figure>
+
+<p>DSQ 好比是 BPF 调度器和真实 CPU 之间的<strong>中间队列</strong>。</p>
+<hr>
+<h2 id="4-核心概念：DSQ-详解"><a href="#4-核心概念：DSQ-详解" class="headerlink" title="4. 核心概念：DSQ 详解"></a>4. 核心概念：DSQ 详解</h2><h3 id="4-1-三种-DSQ-类型"><a href="#4-1-三种-DSQ-类型" class="headerlink" title="4.1 三种 DSQ 类型"></a>4.1 三种 DSQ 类型</h3><table>
+<thead>
+<tr>
+<th>类型</th>
+<th>ID</th>
+<th>数量</th>
+<th>排序方式</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>SCX_DSQ_LOCAL</code></td>
+<td><code>0x8000000000000002</code></td>
+<td>每 CPU 一个</td>
+<td>仅 FIFO</td>
+<td>CPU 直接执行的队列，总是最先消费</td>
+</tr>
+<tr>
+<td><code>SCX_DSQ_GLOBAL</code></td>
+<td><code>0x8000000000000001</code></td>
+<td>系统唯一</td>
+<td>仅 FIFO</td>
+<td>全局后备队列，CPU local 空时自动取</td>
+</tr>
+<tr>
+<td>自定义 DSQ</td>
+<td>用户指定（小于 $2^{63}$）</td>
+<td>不限</td>
+<td>FIFO 或 vtime 优先级</td>
+<td>实现复杂调度策略</td>
+</tr>
+</tbody></table>
+<p><strong>关键规则</strong>：CPU <strong>永远优先</strong>执行其本地 DSQ 中的任务。只有当本地队列为空时，才进入 <code>dispatch()</code> 回调从其他地方拉取任务。</p>
+<h3 id="4-2-DSQ-ID-编码"><a href="#4-2-DSQ-ID-编码" class="headerlink" title="4.2 DSQ ID 编码"></a>4.2 DSQ ID 编码</h3><p>DSQ ID 是一个 64 位整型，bit 63 标记是否为内置队列：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">Bits: [63] [62]  [61..32]  [31..0]</span><br><span class="line">      [ B] [ L]  [ 保留  ]  [CPU号  ]</span><br><span class="line"> B=1: 内核内置 DSQ</span><br><span class="line"> L=1: LOCAL_ON 变体（指定目标 CPU）</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-3-核心-DSQ-操作-API"><a href="#4-3-核心-DSQ-操作-API" class="headerlink" title="4.3 核心 DSQ 操作 API"></a>4.3 核心 DSQ 操作 API</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 创建自定义 DSQ（node=-1 无 NUMA 亲和，或指定 NUMA 节点 ID）</span></span><br><span class="line">s32 <span class="title function_">scx_bpf_create_dsq</span><span class="params">(u64 dsq_id, s32 node)</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 销毁自定义 DSQ</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">scx_bpf_destroy_dsq</span><span class="params">(u64 dsq_id)</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// FIFO 插入：插入到队列尾部</span></span><br><span class="line"><span class="comment">// 可指定目标：SCX_DSQ_LOCAL、SCX_DSQ_GLOBAL、SCX_DSQ_LOCAL_ON|cpu_id、自定义 DSQ</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">scx_bpf_dsq_insert</span><span class="params">(<span class="keyword">struct</span> task_struct *p, u64 dsq_id,</span></span><br><span class="line"><span class="params">                         u64 slice, u64 enq_flags)</span>;</span><br><span class="line"><span class="comment">//   slice: 任务的时间片（纳秒），如 SCX_SLICE_DFL（默认 5ms）</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// vtime 优先级插入：按虚拟时间排序，vtime 越小越优先</span></span><br><span class="line"><span class="comment">// 仅支持自定义 DSQ！</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">scx_bpf_dsq_insert_vtime</span><span class="params">(<span class="keyword">struct</span> task_struct *p, u64 dsq_id,</span></span><br><span class="line"><span class="params">                               u64 slice, u64 vtime, u64 enq_flags)</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 从非本地 DSQ 迁移一个任务到当前 CPU 的本地 DSQ</span></span><br><span class="line"><span class="type">void</span> <span class="title function_">scx_bpf_dsq_move_to_local</span><span class="params">(u64 dsq_id, u64 flags)</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 查询 DSQ 中排队的任务数</span></span><br><span class="line">s32 <span class="title function_">scx_bpf_dsq_nr_queued</span><span class="params">(u64 dsq_id)</span>;</span><br></pre></td></tr></table></figure>
+
+<h3 id="4-4-任务在-DSQ-之间的流动"><a href="#4-4-任务在-DSQ-之间的流动" class="headerlink" title="4.4 任务在 DSQ 之间的流动"></a>4.4 任务在 DSQ 之间的流动</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">                      select_cpu()</span><br><span class="line">┌──────────┐  发现 idle CPU ──────────────────────────┐</span><br><span class="line">│ 任务唤醒  │                                          │</span><br><span class="line">└────┬─────┘                                          │</span><br><span class="line">     │ 无 idle CPU                                     │</span><br><span class="line">     ▼                                                ▼</span><br><span class="line">enqueue()                                   SCX_DSQ_LOCAL</span><br><span class="line">     │                                      （直接执行）</span><br><span class="line">     ▼</span><br><span class="line">┌──────────────┐         dispatch()</span><br><span class="line">│ 自定义 DSQ     │ ────────────────────→ SCX_DSQ_LOCAL</span><br><span class="line">│ (vtime 排序)   │     scx_bpf_dsq_</span><br><span class="line">└──────────────┘     move_to_local()     （CPU 执行）</span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="5-完整的-sched-ext-ops-回调表"><a href="#5-完整的-sched-ext-ops-回调表" class="headerlink" title="5. 完整的 sched_ext_ops 回调表"></a>5. 完整的 sched_ext_ops 回调表</h2><h3 id="5-1-调度核心回调（按触发顺序）"><a href="#5-1-调度核心回调（按触发顺序）" class="headerlink" title="5.1 调度核心回调（按触发顺序）"></a>5.1 调度核心回调（按触发顺序）</h3><table>
+<thead>
+<tr>
+<th>回调</th>
+<th>触发时机</th>
+<th>上下文</th>
+<th>典型用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>select_cpu</code></td>
+<td>任务唤醒（fork&#x2F;exec&#x2F;wakeup）</td>
+<td>rq lock 持有</td>
+<td>选择 CPU，遇到 idle CPU 可直发 LOCAL</td>
+</tr>
+<tr>
+<td><code>enqueue</code></td>
+<td>任务就绪但未被 select_cpu 直发</td>
+<td>rq lock 持有</td>
+<td>将任务插入调度队列（DSQ）</td>
+</tr>
+<tr>
+<td><code>dequeue</code></td>
+<td>任务离开 BPF 调度器托管</td>
+<td>rq lock 持有</td>
+<td>清理任务状态（可选）</td>
+</tr>
+<tr>
+<td><code>dispatch</code></td>
+<td>CPU 的 local&#x2F;global DSQ 都空了</td>
+<td>rq lock 持有</td>
+<td>从自定义 DSQ 拉任务到本地</td>
+</tr>
+<tr>
+<td><code>running</code></td>
+<td>任务开始在 CPU 上执行</td>
+<td>rq lock 持有</td>
+<td>记录开始时间、更新全局时钟</td>
+</tr>
+<tr>
+<td><code>stopping</code></td>
+<td>任务停止（时间片到&#x2F;阻塞&#x2F;被抢占）</td>
+<td>rq lock 持有</td>
+<td>消耗计费、更新 vtime</td>
+</tr>
+<tr>
+<td><code>tick</code></td>
+<td>每个 HZ 滴答</td>
+<td>rq lock 持有</td>
+<td>周期性检查（时间片管理）</td>
+</tr>
+</tbody></table>
+<h3 id="5-2-生命周期回调"><a href="#5-2-生命周期回调" class="headerlink" title="5.2 生命周期回调"></a>5.2 生命周期回调</h3><table>
+<thead>
+<tr>
+<th>回调</th>
+<th>触发时机</th>
+<th>关键特性</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>init</code></td>
+<td>调度器加载（在任何任务迁移前）</td>
+<td><strong>可睡眠（SLEEPABLE）</strong> — 可安全创建 DSQ</td>
+</tr>
+<tr>
+<td><code>exit</code></td>
+<td>调度器卸载</td>
+<td>记录退出信息给用户态</td>
+</tr>
+<tr>
+<td><code>init_task</code></td>
+<td>每个任务首次进入 SCX</td>
+<td><strong>可睡眠</strong> — 初始化任务级状态</td>
+</tr>
+<tr>
+<td><code>exit_task</code></td>
+<td>任务退出或调度器卸载</td>
+<td><strong>可睡眠</strong> — 清理任务级状态</td>
+</tr>
+<tr>
+<td><code>enable</code></td>
+<td>任务进入 SCX（与 disable 配对）</td>
+<td>初始化任务 vtime 等</td>
+</tr>
+<tr>
+<td><code>disable</code></td>
+<td>任务离开 SCX（策略变化&#x2F;调度器卸载）</td>
+<td></td>
+</tr>
+</tbody></table>
+<h3 id="5-3-cgroup-回调（需要-CONFIG-EXT-GROUP-SCHED）"><a href="#5-3-cgroup-回调（需要-CONFIG-EXT-GROUP-SCHED）" class="headerlink" title="5.3 cgroup 回调（需要 CONFIG_EXT_GROUP_SCHED）"></a>5.3 cgroup 回调（需要 CONFIG_EXT_GROUP_SCHED）</h3><table>
+<thead>
+<tr>
+<th>回调</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>cgroup_init</code> &#x2F; <code>cgroup_exit</code></td>
+<td>cgroup 创建&#x2F;销毁</td>
+</tr>
+<tr>
+<td><code>cgroup_set_weight</code></td>
+<td>cgroup 权重变更</td>
+</tr>
+<tr>
+<td><code>cgroup_move</code></td>
+<td>任务在 cgroup 间迁移</td>
+</tr>
+</tbody></table>
+<h3 id="5-4-高级回调"><a href="#5-4-高级回调" class="headerlink" title="5.4 高级回调"></a>5.4 高级回调</h3><table>
+<thead>
+<tr>
+<th>回调</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>update_idle</code></td>
+<td>CPU idle 状态变化通知</td>
+</tr>
+<tr>
+<td><code>cpu_acquire</code> &#x2F; <code>cpu_release</code></td>
+<td>CPU 获得&#x2F;释放（热插拔）</td>
+</tr>
+<tr>
+<td><code>core_sched_before</code></td>
+<td>SMT 核心调度排序</td>
+</tr>
+<tr>
+<td><code>dump</code> &#x2F; <code>dump_cpu</code> &#x2F; <code>dump_task</code></td>
+<td>错误时诊断信息输出</td>
+</tr>
+</tbody></table>
+<h3 id="5-5-重要语义"><a href="#5-5-重要语义" class="headerlink" title="5.5 重要语义"></a>5.5 重要语义</h3><ul>
+<li><strong>必填字段</strong>：只有 <code>.name</code> 是强制必须设置的</li>
+<li><strong>调度器托管（custody）</strong>：任务被放入自定义 DSQ 时进入”托管”状态，<code>dequeue()</code> 只在任务离开托管时调用</li>
+<li><strong>竞态容忍</strong>：回调可能在多个 CPU 上并发执行。<code>running()</code> &#x2F; <code>stopping()</code> 中的全局状态更新允许轻量竞态（详见 scx_simple 源码注释）</li>
+<li><strong>不允许阻塞</strong>：除标记 SLEEPABLE 的回调外，所有调度核心回调<strong>决不能睡眠</strong>（不能持有 mutex、不能用 GFP_KERNEL）</li>
+</ul>
+<hr>
+<h2 id="6-从-scx-simple-入手：逐行详解"><a href="#6-从-scx-simple-入手：逐行详解" class="headerlink" title="6. 从 scx_simple 入手：逐行详解"></a>6. 从 scx_simple 入手：逐行详解</h2><h3 id="6-1-许可证和全局状态"><a href="#6-1-许可证和全局状态" class="headerlink" title="6.1 许可证和全局状态"></a>6.1 许可证和全局状态</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;scx/common.bpf.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="type">char</span> _license[] SEC(<span class="string">&quot;license&quot;</span>) = <span class="string">&quot;GPL&quot;</span>;</span><br><span class="line"></span><br><span class="line"><span class="type">const</span> <span class="keyword">volatile</span> <span class="type">bool</span> fifo_sched;   <span class="comment">// 用户态通过 rodata 设置</span></span><br><span class="line"><span class="type">static</span> u64 vtime_now;              <span class="comment">// 全局虚拟时钟（近似全局公平性的基础）</span></span><br><span class="line">UEI_DEFINE(uei);                   <span class="comment">// 退出信息记录</span></span><br></pre></td></tr></table></figure>
+
+<p><code>const volatile</code> 是 BPF 中用户态与内核态共享配置的惯用模式。<code>UEI</code> 用于在调度器卸载时将退出原因（正常退出&#x2F;错误&#x2F;需重启）告知用户态。</p>
+<h3 id="6-2-自定义-DSQ-创建"><a href="#6-2-自定义-DSQ-创建" class="headerlink" title="6.2 自定义 DSQ 创建"></a>6.2 自定义 DSQ 创建</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">define</span> SHARED_DSQ 0   <span class="comment">// 自定义 DSQ ID（&lt; 2^63，非内置）</span></span></span><br><span class="line"></span><br><span class="line">s32 <span class="title function_">BPF_STRUCT_OPS_SLEEPABLE</span><span class="params">(simple_init)</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> scx_bpf_create_dsq(SHARED_DSQ, <span class="number">-1</span>);</span><br><span class="line">    <span class="comment">// -1 = 全局可见，不绑定特定 NUMA 节点</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>init</code> 中创建 DSQ 是最佳实践——此时还未有任何任务被迁移，且 init 是可睡眠的。</p>
+<h3 id="6-3-select-cpu：快路径——直接把任务发给-idle-CPU"><a href="#6-3-select-cpu：快路径——直接把任务发给-idle-CPU" class="headerlink" title="6.3 select_cpu：快路径——直接把任务发给 idle CPU"></a>6.3 select_cpu：快路径——直接把任务发给 idle CPU</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">s32 <span class="title function_">BPF_STRUCT_OPS</span><span class="params">(simple_select_cpu,</span></span><br><span class="line"><span class="params">                   <span class="keyword">struct</span> task_struct *p, s32 prev_cpu, u64 wake_flags)</span> &#123;</span><br><span class="line">    <span class="type">bool</span> is_idle = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 委托给内核默认的 idle CPU 选择逻辑</span></span><br><span class="line">    s32 cpu = scx_bpf_select_cpu_dfl(p, prev_cpu, wake_flags, &amp;is_idle);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (is_idle) &#123;</span><br><span class="line">        stat_inc(<span class="number">0</span>);  <span class="comment">// 本地分发计数</span></span><br><span class="line">        <span class="comment">// 目标 CPU 空闲 → 直接把任务插入它的本地 DSQ</span></span><br><span class="line">        <span class="comment">// 绕过 enqueue()，这是最快的路径！</span></span><br><span class="line">        scx_bpf_dsq_insert(p, SCX_DSQ_LOCAL, SCX_SLICE_DFL, <span class="number">0</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> cpu;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>核心优化</strong>：当有 CPU 空闲时，直接把任务”投递”过去，跳过全局队列的排队开销。这在低负载时极为高效。</p>
+<h3 id="6-4-enqueue：慢路径——将任务放入全局队列"><a href="#6-4-enqueue：慢路径——将任务放入全局队列" class="headerlink" title="6.4 enqueue：慢路径——将任务放入全局队列"></a>6.4 enqueue：慢路径——将任务放入全局队列</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">BPF_STRUCT_OPS</span><span class="params">(simple_enqueue, <span class="keyword">struct</span> task_struct *p, u64 enq_flags)</span> &#123;</span><br><span class="line">    stat_inc(<span class="number">1</span>);  <span class="comment">// 全局入队计数</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (fifo_sched) &#123;</span><br><span class="line">        <span class="comment">// FIFO 模式：简单插入尾部</span></span><br><span class="line">        scx_bpf_dsq_insert(p, SHARED_DSQ, SCX_SLICE_DFL, enq_flags);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// vtime 模式：按虚拟截止时间插入优先级队列</span></span><br><span class="line">        u64 vtime = p-&gt;scx.dsq_vtime;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 防止长时间睡眠的任务累积过多时间配额</span></span><br><span class="line">        <span class="keyword">if</span> (time_before(vtime, vtime_now - SCX_SLICE_DFL))</span><br><span class="line">            vtime = vtime_now - SCX_SLICE_DFL;</span><br><span class="line"></span><br><span class="line">        scx_bpf_dsq_insert_vtime(p, SHARED_DSQ, SCX_SLICE_DFL,</span><br><span class="line">                                 vtime, enq_flags);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>vtime 防饥饿机制</strong>：长时间睡眠的任务其 vtime 会远小于当前全局时钟。如果不做限制，它醒来后会获得巨额”历史欠账”，挤占所有活跃任务。限制在 <code>vtime_now - one_slice</code> 确保了公平。</p>
+<h3 id="6-5-dispatch：CPU-空闲了，给它找活干"><a href="#6-5-dispatch：CPU-空闲了，给它找活干" class="headerlink" title="6.5 dispatch：CPU 空闲了，给它找活干"></a>6.5 dispatch：CPU 空闲了，给它找活干</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">BPF_STRUCT_OPS</span><span class="params">(simple_dispatch, s32 cpu, <span class="keyword">struct</span> task_struct *prev)</span> &#123;</span><br><span class="line">    <span class="comment">// 从自定义共享队列中取一个最小 vtime 的任务</span></span><br><span class="line">    <span class="comment">// 迁移到调用此函数的 CPU 的本地 DSQ</span></span><br><span class="line">    scx_bpf_dsq_move_to_local(SHARED_DSQ, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><code>dispatch()</code> 只在 CPU 本地和全局 DSQ 都为空时被调用。每次调用只移动<strong>一个</strong>任务——内核会反复调用直到队列为空或本地队列有活。</p>
+<h3 id="6-6-running-stopping：vtime-计费"><a href="#6-6-running-stopping：vtime-计费" class="headerlink" title="6.6 running &#x2F; stopping：vtime 计费"></a>6.6 running &#x2F; stopping：vtime 计费</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">BPF_STRUCT_OPS</span><span class="params">(simple_running, <span class="keyword">struct</span> task_struct *p)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (fifo_sched) <span class="keyword">return</span>;</span><br><span class="line">    <span class="comment">// 全局虚拟时钟前进到正在运行的任务的 vtime</span></span><br><span class="line">    <span class="comment">// 这里存在并发竞态，但只影响精度，不影响正确性</span></span><br><span class="line">    <span class="keyword">if</span> (time_before(vtime_now, p-&gt;scx.dsq_vtime))</span><br><span class="line">        vtime_now = p-&gt;scx.dsq_vtime;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">void</span> <span class="title function_">BPF_STRUCT_OPS</span><span class="params">(simple_stopping, <span class="keyword">struct</span> task_struct *p, <span class="type">bool</span> runnable)</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (fifo_sched) <span class="keyword">return</span>;</span><br><span class="line">    <span class="comment">// 实际消耗的 CPU 时间 = 分配的时间片 - 剩余时间片</span></span><br><span class="line">    u64 delta = scale_by_task_weight_inverse(p, SCX_SLICE_DFL - p-&gt;scx.slice);</span><br><span class="line">    <span class="comment">// delta 已按权重缩放：高权重任务消耗&quot;更少&quot;的 vtime</span></span><br><span class="line">    scx_bpf_task_set_dsq_vtime(p, p-&gt;scx.dsq_vtime + delta);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p><strong>vtime 调度原理</strong>：</p>
+<ul>
+<li>任务开始运行时 <code>vtime_now</code> 前进</li>
+<li>任务停止时，消耗的 CPU 时间<strong>按权重倒数缩放</strong>后加到任务的 vtime 上</li>
+<li>高权重任务（nice 值低）的 vtime 增长慢 → 在队列中排得靠前 → 获得更多 CPU</li>
+<li>这和 CFS 的 vruntime 是同一哲学，但只用了几十行代码</li>
+</ul>
+<h3 id="6-7-enable：任务进入时的初始化"><a href="#6-7-enable：任务进入时的初始化" class="headerlink" title="6.7 enable：任务进入时的初始化"></a>6.7 enable：任务进入时的初始化</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">void</span> <span class="title function_">BPF_STRUCT_OPS</span><span class="params">(simple_enable, <span class="keyword">struct</span> task_struct *p)</span> &#123;</span><br><span class="line">    scx_bpf_task_set_dsq_vtime(p, vtime_now);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>新任务进入 SCX 调度时，其 vtime 被设置为当前全局虚拟时钟。这样它既不会因 vtime&#x3D;0 而获得不公平的优待，也不会因从未调度过而被饿死。</p>
+<h3 id="6-8-组装-ops-表"><a href="#6-8-组装-ops-表" class="headerlink" title="6.8 组装 ops 表"></a>6.8 组装 ops 表</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">SCX_OPS_DEFINE(simple_ops,</span><br><span class="line">    .select_cpu  = (<span class="type">void</span> *)simple_select_cpu,</span><br><span class="line">    .enqueue     = (<span class="type">void</span> *)simple_enqueue,</span><br><span class="line">    .dispatch    = (<span class="type">void</span> *)simple_dispatch,</span><br><span class="line">    .running     = (<span class="type">void</span> *)simple_running,</span><br><span class="line">    .stopping    = (<span class="type">void</span> *)simple_stopping,</span><br><span class="line">    .enable      = (<span class="type">void</span> *)simple_enable,</span><br><span class="line">    .init        = (<span class="type">void</span> *)simple_init,</span><br><span class="line">    .<span class="built_in">exit</span>        = (<span class="type">void</span> *)simple_exit,</span><br><span class="line">    .name        = <span class="string">&quot;simple&quot;</span>);</span><br></pre></td></tr></table></figure>
+
+<p><strong>注意</strong>：回调必须强制转换为 <code>(void *)</code>，因为 BPF 的 <code>struct_ops</code> 机制要求 BPF 函数指针在 ELF 中以特殊方式编码。<code>name</code> 字段会出现在 <code>/sys/kernel/sched_ext/root/ops</code> 中，也用于调试输出。</p>
+<hr>
+<h2 id="7-BPF-数据结构和-Map-模式"><a href="#7-BPF-数据结构和-Map-模式" class="headerlink" title="7. BPF 数据结构和 Map 模式"></a>7. BPF 数据结构和 Map 模式</h2><h3 id="7-1-统计计数器（PERCPU-ARRAY）"><a href="#7-1-统计计数器（PERCPU-ARRAY）" class="headerlink" title="7.1 统计计数器（PERCPU_ARRAY）"></a>7.1 统计计数器（PERCPU_ARRAY）</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);</span><br><span class="line">    __uint(key_size, <span class="keyword">sizeof</span>(u32));</span><br><span class="line">    __uint(value_size, <span class="keyword">sizeof</span>(u64));</span><br><span class="line">    __uint(max_entries, <span class="number">2</span>);   <span class="comment">// [0]=local分发, [1]=global入队</span></span><br><span class="line">&#125; stats <span class="title function_">SEC</span><span class="params">(<span class="string">&quot;.maps&quot;</span>)</span>;</span><br><span class="line"></span><br><span class="line"><span class="type">static</span> <span class="type">void</span> <span class="title function_">stat_inc</span><span class="params">(u32 idx)</span> &#123;</span><br><span class="line">    u64 *cnt_p = bpf_map_lookup_elem(&amp;stats, &amp;idx);</span><br><span class="line">    <span class="keyword">if</span> (cnt_p) (*cnt_p)++;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>每个 CPU 有独立的计数器副本，避免了锁竞争。用户态汇总时遍历所有 CPU 求和。</p>
+<h3 id="7-2-任务级上下文（TASK-STORAGE）"><a href="#7-2-任务级上下文（TASK-STORAGE）" class="headerlink" title="7.2 任务级上下文（TASK_STORAGE）"></a>7.2 任务级上下文（TASK_STORAGE）</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">task_ctx</span> &#123;</span></span><br><span class="line">    u64 start_time;    <span class="comment">// 任务开始执行的时间戳</span></span><br><span class="line">    u64 deadline;      <span class="comment">// 截止时间</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">    __uint(type, BPF_MAP_TYPE_TASK_STORAGE);</span><br><span class="line">    __uint(map_flags, BPF_F_NO_PREALLOC);</span><br><span class="line">    __type(key, <span class="type">int</span>);</span><br><span class="line">    __type(value, <span class="keyword">struct</span> task_ctx);</span><br><span class="line">&#125; task_ctx_stor <span class="title function_">SEC</span><span class="params">(<span class="string">&quot;.maps&quot;</span>)</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 在 init_task 中创建：</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">task_ctx</span> *<span class="title">ctx</span> =</span> bpf_task_storage_get(&amp;task_ctx_stor, p, <span class="number">0</span>,</span><br><span class="line">                                             BPF_LOCAL_STORAGE_GET_F_CREATE);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 在任意回调中读取：</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">task_ctx</span> *<span class="title">ctx</span> =</span> bpf_task_storage_get(&amp;task_ctx_stor, p, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line"><span class="keyword">if</span> (ctx) &#123; <span class="comment">/* 使用 ctx */</span> &#125;</span><br></pre></td></tr></table></figure>
+
+<p>每个 <code>task_struct</code> 有自己的存储桶，零开销查找。适合存放任务的调度相关上下文。</p>
+<h3 id="7-3-BPF-Arena（大数据结构）"><a href="#7-3-BPF-Arena（大数据结构）" class="headerlink" title="7.3 BPF Arena（大数据结构）"></a>7.3 BPF Arena（大数据结构）</h3><p>对于复杂调度器（如 <code>scx_qmap</code>），Arena 提供了更大的内存空间和更灵活的数据结构：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">    __uint(type, BPF_MAP_TYPE_ARENA);</span><br><span class="line">    __uint(map_flags, BPF_F_MMAPABLE);</span><br><span class="line">    __uint(max_entries, <span class="number">1</span> &lt;&lt; <span class="number">16</span>);       <span class="comment">// 页数上限</span></span><br><span class="line">    __ulong(map_extra, <span class="number">0x1u</span>ll &lt;&lt; <span class="number">44</span>);   <span class="comment">// 虚拟地址基址</span></span><br><span class="line">&#125; arena <span class="title function_">SEC</span><span class="params">(<span class="string">&quot;.maps&quot;</span>)</span>;</span><br></pre></td></tr></table></figure>
+
+<p>Arena 支持链表、自旋锁、动态分配等——相当于 BPF 中的 <code>malloc</code>。</p>
+<h3 id="7-4-BPF-约束速查"><a href="#7-4-BPF-约束速查" class="headerlink" title="7.4 BPF 约束速查"></a>7.4 BPF 约束速查</h3><table>
+<thead>
+<tr>
+<th>约束</th>
+<th>影响</th>
+<th>应对</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>最大指令数</strong></td>
+<td>默认 100 万条</td>
+<td>用 <code>bpf_for()</code> &#x2F; <code>bpf_repeat()</code> 替代无界循环</td>
+</tr>
+<tr>
+<td><strong>栈空间</strong></td>
+<td>512 字节</td>
+<td>大数据放在 map 或 arena</td>
+</tr>
+<tr>
+<td><strong>不能浮点</strong></td>
+<td>所有运算必须是整数</td>
+<td>用纳秒&#x2F;微秒精度替代浮点比例</td>
+</tr>
+<tr>
+<td><strong>函数指针受限</strong></td>
+<td>不能取函数地址</td>
+<td>用 <code>BPF_STRUCT_OPS</code> 宏</td>
+</tr>
+<tr>
+<td><strong>rodata 只有加载前可写</strong></td>
+<td>加载后配置不可变</td>
+<td>通过 BPF map 传递动态配置</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="8-用户态加载器模式"><a href="#8-用户态加载器模式" class="headerlink" title="8. 用户态加载器模式"></a>8. 用户态加载器模式</h2><h3 id="8-1-标准四步加载"><a href="#8-1-标准四步加载" class="headerlink" title="8.1 标准四步加载"></a>8.1 标准四步加载</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;scx/common.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&quot;my_sched.bpf.skel.h&quot;</span>   <span class="comment">// bpftool 自动生成的骨架头文件</span></span></span><br><span class="line"></span><br><span class="line"><span class="type">int</span> <span class="title function_">main</span><span class="params">(<span class="type">int</span> argc, <span class="type">char</span> **argv)</span> &#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">my_sched</span> *<span class="title">skel</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">bpf_link</span> *<span class="title">link</span>;</span></span><br><span class="line">    u64 ecode;</span><br><span class="line"></span><br><span class="line">    signal(SIGINT,  sigint_handler);</span><br><span class="line">    signal(SIGTERM, sigint_handler);</span><br><span class="line"></span><br><span class="line">restart:</span><br><span class="line">    <span class="comment">// ① OPEN：libbpf 解析 BPF ELF，创建所有 map 对象</span></span><br><span class="line">    skel = SCX_OPS_OPEN(my_ops, my_sched);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// ② 设置配置（必须在 LOAD 之前）</span></span><br><span class="line">    skel-&gt;rodata-&gt;slice_ns  = <span class="number">10</span> * NSEC_PER_MSEC;</span><br><span class="line">    skel-&gt;rodata-&gt;fifo_mode = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// ③ LOAD：BPF 验证器静态分析 + 加载到内核</span></span><br><span class="line">    SCX_OPS_LOAD(skel, my_ops, my_sched, uei);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// ④ ATTACH：激活！所有 SCHED_NORMAL 任务迁移到 SCX</span></span><br><span class="line">    link = SCX_OPS_ATTACH(skel, my_ops, my_sched);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// ⑤ 监控主循环</span></span><br><span class="line">    <span class="keyword">while</span> (!exit_req &amp;&amp; !UEI_EXITED(skel, uei)) &#123;</span><br><span class="line">        read_and_print_stats(skel);</span><br><span class="line">        sleep(<span class="number">1</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// ⑥ 清理</span></span><br><span class="line">    bpf_link__destroy(link);</span><br><span class="line">    ecode = UEI_REPORT(skel, uei);</span><br><span class="line">    my_sched__destroy(skel);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// CPU 热插拔时自动重启</span></span><br><span class="line">    <span class="keyword">if</span> (UEI_ECODE_RESTART(ecode))</span><br><span class="line">        <span class="keyword">goto</span> restart;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="8-2-UEI（User-Exit-Info）机制"><a href="#8-2-UEI（User-Exit-Info）机制" class="headerlink" title="8.2 UEI（User Exit Info）机制"></a>8.2 UEI（User Exit Info）机制</h3><p>UEI 是 BPF 调度器和用户态之间的退出通信通道：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// BPF 侧：</span></span><br><span class="line">UEI_DEFINE(uei);  <span class="comment">// 声明共享结构</span></span><br><span class="line"></span><br><span class="line"><span class="type">void</span> <span class="title function_">BPF_STRUCT_OPS</span><span class="params">(simple_exit, <span class="keyword">struct</span> scx_exit_info *ei)</span> &#123;</span><br><span class="line">    UEI_RECORD(uei, ei);  <span class="comment">// 记录内核传来的退出信息</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 用户态侧：</span></span><br><span class="line"><span class="keyword">if</span> (UEI_EXITED(skel, uei)) &#123; ... &#125;           <span class="comment">// 检查是否已退出</span></span><br><span class="line">u64 ecode = UEI_REPORT(skel, uei);           <span class="comment">// 获取退出码并打印原因</span></span><br><span class="line"><span class="keyword">if</span> (UEI_ECODE_RESTART(ecode)) <span class="keyword">goto</span> restart;  <span class="comment">// 需要重启</span></span><br></pre></td></tr></table></figure>
+
+<p>退出信息包含：<code>reason</code>（退出原因字符串）、<code>msg</code>（详细消息）、<code>exit_code</code>（退出码）、<code>exit_cpu</code>。</p>
+<h3 id="8-3-通过-rodata-传递配置"><a href="#8-3-通过-rodata-传递配置" class="headerlink" title="8.3 通过 rodata 传递配置"></a>8.3 通过 rodata 传递配置</h3><figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// BPF 侧（.bpf.c）：</span></span><br><span class="line"><span class="type">const</span> <span class="keyword">volatile</span> u64 slice_ns = SCX_SLICE_DFL;  <span class="comment">// 默认 5ms</span></span><br><span class="line"><span class="type">const</span> <span class="keyword">volatile</span> <span class="type">bool</span> use_fifo = <span class="literal">false</span>;</span><br><span class="line"><span class="type">const</span> <span class="keyword">volatile</span> s32 numa_node = <span class="number">-1</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 用户态侧（.c）：</span></span><br><span class="line">skel-&gt;rodata-&gt;slice_ns = <span class="number">20</span> * NSEC_PER_MSEC;</span><br><span class="line">skel-&gt;rodata-&gt;use_fifo = <span class="literal">true</span>;</span><br><span class="line"><span class="comment">// 必须在 SCX_OPS_LOAD() 之前设置！</span></span><br></pre></td></tr></table></figure>
+
+<p>rodata 中的 <code>const volatile</code> 变量在 BPF 验证器眼中是”加载后不可变”的，这样验证器可以做常量折叠优化。</p>
+<hr>
+<h2 id="9-构建与运行"><a href="#9-构建与运行" class="headerlink" title="9. 构建与运行"></a>9. 构建与运行</h2><h3 id="9-1-构建链"><a href="#9-1-构建链" class="headerlink" title="9.1 构建链"></a>9.1 构建链</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">.bpf.c 源码</span><br><span class="line">    │ clang -target bpf -O2 -mcpu=v3</span><br><span class="line">    ▼</span><br><span class="line">.bpf.o (BPF ELF 字节码)</span><br><span class="line">    │ bpftool gen skeleton</span><br><span class="line">    ▼</span><br><span class="line">.bpf.skel.h (C 骨架头文件)</span><br><span class="line">    │ 被用户态 loader #include</span><br><span class="line">    ▼</span><br><span class="line">   gcc/clang 编译</span><br><span class="line">    ▼</span><br><span class="line">最终可执行文件（含嵌入式 BPF 字节码）</span><br></pre></td></tr></table></figure>
+
+<h3 id="9-2-运行和监控"><a href="#9-2-运行和监控" class="headerlink" title="9.2 运行和监控"></a>9.2 运行和监控</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 以 vtime 模式运行</span></span><br><span class="line"><span class="built_in">sudo</span> ./build/bin/scx_simple</span><br><span class="line"></span><br><span class="line"><span class="comment"># 以 FIFO 模式运行</span></span><br><span class="line"><span class="built_in">sudo</span> ./build/bin/scx_simple -f</span><br><span class="line"></span><br><span class="line"><span class="comment"># 监控调度器状态</span></span><br><span class="line"><span class="built_in">cat</span> /sys/kernel/sched_ext/state       <span class="comment"># enabled / disabled</span></span><br><span class="line"><span class="built_in">cat</span> /sys/kernel/sched_ext/root/ops    <span class="comment"># 当前调度器名称</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 查看某个进程是否被 SCX 调度</span></span><br><span class="line">grep ext /proc/self/sched             <span class="comment"># ext.enabled: 1</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># Ctrl+C 停止 → 所有任务自动回退 CFS</span></span><br></pre></td></tr></table></figure>
+
+<h3 id="9-3-应急恢复"><a href="#9-3-应急恢复" class="headerlink" title="9.3 应急恢复"></a>9.3 应急恢复</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 如果 BPF 调度器卡死或异常：</span></span><br><span class="line"><span class="comment"># SysRq-S：强制中止当前 SCX 调度器，回退到 CFS</span></span><br><span class="line"><span class="comment"># SysRq-D：触发诊断信息输出（不中止调度器）</span></span><br></pre></td></tr></table></figure>
+
+<p>sched_ext 内置了<strong>看门狗</strong>：如果 BPF 调度器在 2×SCX_SLICE_DFL 时间内没有调度任何任务，内核自动回退到 CFS。</p>
+<hr>
+<h2 id="10-进阶：生产级调度器一览"><a href="#10-进阶：生产级调度器一览" class="headerlink" title="10. 进阶：生产级调度器一览"></a>10. 进阶：生产级调度器一览</h2><p>以下调度器均随内核源码或官方 scx 仓库发布：</p>
+<table>
+<thead>
+<tr>
+<th>调度器</th>
+<th>语言</th>
+<th>核心特点</th>
+<th>复杂度</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>scx_simple</strong></td>
+<td>C</td>
+<td>全局 vtime &#x2F; FIFO，约 120 行 BPF C</td>
+<td>★☆☆☆</td>
+</tr>
+<tr>
+<td><strong>scx_qmap</strong></td>
+<td>C</td>
+<td>5 级 FIFO + BPF Arena + Core Scheduling</td>
+<td>★★★☆</td>
+</tr>
+<tr>
+<td><strong>scx_flatcg</strong></td>
+<td>C</td>
+<td>扁平化 cgroup 层级权重调度</td>
+<td>★★★☆</td>
+</tr>
+<tr>
+<td><strong>scx_central</strong></td>
+<td>C</td>
+<td>单 CPU 集中式调度，无 tick 操作</td>
+<td>★★☆☆</td>
+</tr>
+<tr>
+<td><strong>scx_userland</strong></td>
+<td>C</td>
+<td>将调度决策发到用户态做</td>
+<td>★★☆☆</td>
+</tr>
+<tr>
+<td><strong>scx_rusty</strong></td>
+<td>Rust</td>
+<td>NUMA 感知多域 + 任务窃取</td>
+<td>★★★★</td>
+</tr>
+<tr>
+<td><strong>scx_layered</strong></td>
+<td>Rust</td>
+<td>用户可配的多层 cgroup 调度（Meta 生产验证）</td>
+<td>★★★★</td>
+</tr>
+</tbody></table>
+<h3 id="10-1-scx-layered：生产级案例"><a href="#10-1-scx-layered：生产级案例" class="headerlink" title="10.1 scx_layered：生产级案例"></a>10.1 scx_layered：生产级案例</h3><p><code>scx_layered</code> 已在 Meta 生产环境中验证，它通过 JSON 配置将任务按 cgroup&#x2F;PID 分层：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="punctuation">&#123;</span></span><br><span class="line">    <span class="attr">&quot;layers&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span></span><br><span class="line">        <span class="punctuation">&#123;</span></span><br><span class="line">            <span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;high-priority&quot;</span><span class="punctuation">,</span></span><br><span class="line">            <span class="attr">&quot;cgroups&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;/system.slice/important.service&quot;</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">            <span class="attr">&quot;cpus_range&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="number">0</span><span class="punctuation">,</span> <span class="number">32</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">            <span class="attr">&quot;util_range&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="number">0.8</span><span class="punctuation">,</span> <span class="number">0.9</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">            <span class="attr">&quot;slice_us&quot;</span><span class="punctuation">:</span> <span class="number">20000</span></span><br><span class="line">        <span class="punctuation">&#125;</span><span class="punctuation">,</span></span><br><span class="line">        <span class="punctuation">&#123;</span></span><br><span class="line">            <span class="attr">&quot;name&quot;</span><span class="punctuation">:</span> <span class="string">&quot;batch&quot;</span><span class="punctuation">,</span></span><br><span class="line">            <span class="attr">&quot;cgroups&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="string">&quot;/system.slice/batch-*&quot;</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">            <span class="attr">&quot;cpus_range&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="number">0</span><span class="punctuation">,</span> <span class="number">16</span><span class="punctuation">]</span><span class="punctuation">,</span></span><br><span class="line">            <span class="attr">&quot;util_range&quot;</span><span class="punctuation">:</span> <span class="punctuation">[</span><span class="number">0.7</span><span class="punctuation">,</span> <span class="number">0.85</span><span class="punctuation">]</span></span><br><span class="line">        <span class="punctuation">&#125;</span></span><br><span class="line">    <span class="punctuation">]</span></span><br><span class="line"><span class="punctuation">&#125;</span></span><br></pre></td></tr></table></figure>
+
+<p>效果：主要工作负载吞吐量提升约 6%，整个混部服务器集群提升约 3.8%。关键优势：<strong>调度策略可以用 JSON 而不是内核补丁来调整</strong>。</p>
+<hr>
+<h2 id="11-从零实现一个调度器的检查清单"><a href="#11-从零实现一个调度器的检查清单" class="headerlink" title="11. 从零实现一个调度器的检查清单"></a>11. 从零实现一个调度器的检查清单</h2><h3 id="第一步：搭建骨架"><a href="#第一步：搭建骨架" class="headerlink" title="第一步：搭建骨架"></a>第一步：搭建骨架</h3><ul>
+<li><input disabled="" type="checkbox"> 创建 <code>my_sched.bpf.c</code> 和 <code>my_sched.c</code></li>
+<li><input disabled="" type="checkbox"> 编写 Makefile（可直接复用 scx_simple 的构建系统）</li>
+<li><input disabled="" type="checkbox"> 设置 <code>LICENSE(&quot;GPL&quot;)</code> 和 <code>UEI_DEFINE(uei)</code></li>
+</ul>
+<h3 id="第二步：实现最小回调集"><a href="#第二步：实现最小回调集" class="headerlink" title="第二步：实现最小回调集"></a>第二步：实现最小回调集</h3><ul>
+<li><input disabled="" type="checkbox"> <code>init()</code> — 创建 DSQ</li>
+<li><input disabled="" type="checkbox"> <code>select_cpu()</code> — 至少调用 <code>scx_bpf_select_cpu_dfl()</code></li>
+<li><input disabled="" type="checkbox"> <code>enqueue()</code> — 至少插入 SCX_DSQ_GLOBAL</li>
+<li><input disabled="" type="checkbox"> <code>dispatch()</code> — 如果用了自定义 DSQ</li>
+<li><input disabled="" type="checkbox"> <code>exit()</code> — 记录 UEI</li>
+</ul>
+<h3 id="第三步：用户态加载器"><a href="#第三步：用户态加载器" class="headerlink" title="第三步：用户态加载器"></a>第三步：用户态加载器</h3><ul>
+<li><input disabled="" type="checkbox"> <code>SCX_OPS_OPEN()</code> → 配置 rodata → <code>SCX_OPS_LOAD()</code> → <code>SCX_OPS_ATTACH()</code></li>
+<li><input disabled="" type="checkbox"> 主循环中读取统计</li>
+<li><input disabled="" type="checkbox"> 信号处理 + 自动重启</li>
+</ul>
+<h3 id="第四步：测试"><a href="#第四步：测试" class="headerlink" title="第四步：测试"></a>第四步：测试</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 确保调度器能加载和卸载</span></span><br><span class="line"><span class="built_in">sudo</span> ./my_sched &amp;</span><br><span class="line"><span class="built_in">sleep</span> 2</span><br><span class="line"><span class="built_in">sudo</span> <span class="built_in">kill</span> %1</span><br><span class="line"></span><br><span class="line"><span class="comment"># 压测下观察行为</span></span><br><span class="line">stress-ng --cpu 4 --<span class="built_in">timeout</span> 10s &amp;</span><br><span class="line"><span class="built_in">sudo</span> ./my_sched</span><br><span class="line"></span><br><span class="line"><span class="comment"># 验证无任务被饿死（观察 5 分钟）</span></span><br></pre></td></tr></table></figure>
+
+<hr>
+<h2 id="12-总结"><a href="#12-总结" class="headerlink" title="12. 总结"></a>12. 总结</h2><p>sched_ext 把”编写内核调度器”从”给内核打 9000 行补丁”变成了”用 100 行 BPF C 实现核心逻辑”。它的设计哲学是：</p>
+<ol>
+<li><strong>BPF 负责决策</strong>（哪个任务先跑、分配多少时间、放哪个 CPU）</li>
+<li><strong>sched_ext 框架负责执行</strong>（上下文切换、锁管理、安全兜底、定时器、抢占）</li>
+<li><strong>DSQ 是二者之间的隔离层</strong>（解耦策略和机制）</li>
+</ol>
+<p>这种方式下，调度策略的迭代周期从”编译内核 → 重启 → 测试”缩短为”编译 BPF 程序 → 运行 → Ctrl+C 回退”。</p>
+
+  </div>
+</article>
+
+
+
+    <div class="blog-post-comments">
+        <div id="giscus_thread"
+             data-giscus-light-theme="light"
+             data-giscus-dark-theme="dark">
+            <noscript>加载评论需要在浏览器启用 JavaScript 脚本支持。</noscript>
+        </div>
+    </div>
+
+
+
+        <footer id="footer">
+  <div class="footer-main">
+    <div class="footer-left">
+      Copyright &copy;
+      
+      
+      2017-2026
+      Jimmy Ho
+      <div class="footer-version">当前呈现版本：1e36370a</div>
+    </div>
+    <div class="footer-right">
+      <nav>
+        <ul>
+          <li><a target="_blank" rel="noopener" href="https://status.jimmyho.net/">服务器状态</a></li><!--
+       --><li><a href="/sitemap.xml">网站地图</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+  <div class="footer-license">
+    除非<a target="_blank" rel="noopener" href="https://creativecommons.org/policies/#license">另有说明</a>，本网站内容均采用
+    <a target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans" rel="license noopener">知识共享署名—非商业性使用—相同方式共享 4.0 国际许可协议（CC BY-NC-SA 4.0）</a>许可。
+  </div>
+</footer>
+
+    </div>
+    <div id="floating-menu" class="floating-menu">
+  <div id="floating-menu-actions" class="floating-menu-actions" aria-hidden="true">
+    
+    
+      <a class="floating-action" href="/2026/07/19/kv-cache-guide/" aria-label="下一篇" title="下一篇">
+        <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+      </a>
+    
+    <button id="floating-top" class="floating-action" type="button" aria-label="返回顶部" title="返回顶部" hidden>
+      <i class="fa-solid fa-chevron-up" aria-hidden="true"></i>
+    </button>
+    
+      <button id="floating-share-toggle" class="floating-action" type="button" aria-label="分享文章" title="分享文章" data-share-title="Linux sched_ext：用 BPF 编写用户态调度器完整教程" data-share-url="https://blog.jimmyho.net/2026/07/19/linux-sched-ext-guide/" data-share-copied="复制成功！">
+        <i class="fa-solid fa-share-alt" aria-hidden="true"></i>
+      </button>
+    
+    <button id="theme-toggle" class="floating-action" type="button" aria-label="Switch to light mode" title="Switch to light mode">
+      <i class="fa-solid fa-sun" aria-hidden="true"></i>
+    </button>
+    <a class="floating-action" href="/" aria-label="首页" title="首页">
+      <i class="fa-solid fa-home" aria-hidden="true"></i>
+    </a>
+  </div>
+
+  <button id="floating-menu-toggle" class="theme-toggle" type="button" aria-label="菜单" title="菜单" aria-expanded="false" aria-controls="floating-menu-actions">
+    <i class="fa-solid fa-bars" aria-hidden="true"></i>
+  </button>
+  <div id="floating-share-status" class="floating-share-status" role="status" aria-live="polite"></div>
+</div>
+
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script>
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script>
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"复制到粘贴板！\">";
+    btn += '<i class="fa-regular fa-clone"></i>';
+    btn += '</span>';
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "复制成功！");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+
+<script src="/js/theme-toggle.js"></script>
+
+<!-- search -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Disqus Comments -->
+
+<!-- utterances Comments -->
+
+<!-- Giscus Comments -->
+
+    <script type="text/javascript">
+      (function(){
+          var container = document.getElementById('giscus_thread');
+          if (!container) return;
+
+          var currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+          var lightTheme = container.getAttribute('data-giscus-light-theme') || 'light';
+          var darkTheme = container.getAttribute('data-giscus-dark-theme') || 'dark';
+          var script = document.createElement('script');
+
+          script.src = 'https://giscus.app/client.js';
+          script.setAttribute('data-repo', 'jimmypury/blog-comments');
+          script.setAttribute('data-repo-id', 'R_kgDOTWOXyQ');
+          script.setAttribute('data-category', 'Announcements');
+          script.setAttribute('data-category-id', 'DIC_kwDOTWOXyc4DBCtB');
+          script.setAttribute('data-mapping', 'pathname');
+          script.setAttribute('data-strict', '1');
+          script.setAttribute('data-reactions-enabled', '1');
+          script.setAttribute('data-emit-metadata', '0');
+          script.setAttribute('data-input-position', 'bottom');
+          script.setAttribute('data-theme', currentTheme === 'light' ? lightTheme : darkTheme);
+          script.setAttribute('data-lang', 'zh-CN');
+          script.setAttribute('data-loading', 'lazy');
+          script.setAttribute('crossorigin', 'anonymous');
+          script.async = true;
+
+          container.appendChild(script);
+      }());
+  </script>
+
+
+</body>
+</html>

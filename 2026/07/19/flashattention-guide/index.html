@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang=zh>
+<head>
+    <!-- so meta -->
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="HandheldFriendly" content="True">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+    <meta name="description" content="阅读目标：完全不懂大模型的人，看完能搞清楚：  Attention（注意力机制）是什么、怎么算 为什么标准 Attention 在长文本上又慢又耗显存 FlashAttention 做了什么改动、为什么能快几倍 每一个公式、每一个缩写都解释清楚">
+<meta property="og:type" content="article">
+<meta property="og:title" content="FlashAttention 详解（零基础入门）">
+<meta property="og:url" content="https://blog.jimmyho.net/2026/07/19/flashattention-guide/">
+<meta property="og:site_name" content="Jimmy&#39;s Blog">
+<meta property="og:description" content="阅读目标：完全不懂大模型的人，看完能搞清楚：  Attention（注意力机制）是什么、怎么算 为什么标准 Attention 在长文本上又慢又耗显存 FlashAttention 做了什么改动、为什么能快几倍 每一个公式、每一个缩写都解释清楚">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2026-07-19T06:00:00.000Z">
+<meta property="article:modified_time" content="2026-07-19T06:20:00.000Z">
+<meta property="article:author" content="Jimmy Ho">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="FlashAttention">
+<meta property="article:tag" content="GPU">
+<meta property="article:tag" content="LLM">
+<meta property="article:tag" content="Transformer">
+<meta name="twitter:card" content="summary">
+    
+    
+    
+      <link rel="canonical" href="https://blog.jimmyho.net/2026/07/19/flashattention-guide/">
+    
+    
+      
+        
+          <link rel="shortcut icon" href="/images/favicon.ico">
+        
+      
+      
+        
+          <link rel="icon" type="image/png" href="/images/favicon-192x192.png" sizes="192x192">
+        
+      
+      
+        
+          <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+        
+      
+    
+    <!-- title -->
+    <title>FlashAttention 详解（零基础入门）</title>
+    <script>
+      (function() {
+        var theme = 'dark';
+        try {
+          theme = localStorage.getItem('cactus-theme') || 'dark';
+        } catch (error) {}
+        document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+      }());
+    </script>
+    <!-- async scripts -->
+    <!-- Google Analytics -->
+
+
+    <!-- Umami Analytics -->
+
+
+    <!-- styles -->
+    
+<link rel="stylesheet" href="/css/style.css">
+
+    <!-- rss -->
+    
+    
+	<!-- mathjax -->
+	
+		<script type="text/x-mathjax-config">
+		  MathJax.Hub.Config({
+			tex2jax: {
+			  skipTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
+			  inlineMath: [['$','$']]
+			}
+		  });
+		</script>
+		<script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/latest.js?config=TeX-MML-AM_CHTML' async></script>
+	
+<meta name="generator" content="Hexo 8.1.2"><!-- post-notices:style -->
+<style>
+.post-notice {
+  margin: 0 0 1.2em;
+  padding: 0.85em 1em;
+  border-left: 4px solid #d97706;
+  background: #fff7ed;
+  color: #7c2d12;
+  line-height: 1.7;
+}
+.post-notice p {
+  margin: 0;
+}
+.post-notice + .post-notice {
+  margin-top: -0.45em;
+}
+</style>
+</head>
+
+<body class="max-width mx-auto px3 ltr">
+    
+      <div id="header-post">
+  
+  <div id="toc">
+    <ol class="toc">
+      <li class="toc-item toc-level-1 toc-post-title">
+        <a class="toc-link" href="#post-title"><span class="toc-text">FlashAttention 详解（零基础入门）</span></a>
+        
+          <div class="toc-post-children">
+      <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#1-%E5%85%88%E6%90%9E%E6%B8%85%E6%A5%9A%E8%BF%99%E4%BA%9B%E5%9F%BA%E7%A1%80%E6%A6%82%E5%BF%B5"><span class="toc-number">1.</span> <span class="toc-text">1. 先搞清楚这些基础概念</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-1-%E5%A4%A7%E8%AF%AD%E8%A8%80%E6%A8%A1%E5%9E%8B%E9%87%8C%E7%9A%84%E2%80%9DAttention%E2%80%9D%E6%98%AF%E4%BB%80%E4%B9%88"><span class="toc-number">1.1.</span> <span class="toc-text">1.1 大语言模型里的”Attention”是什么</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#1-2-%E6%89%80%E6%9C%89%E7%BC%A9%E5%86%99%E5%92%8C%E6%9C%AF%E8%AF%AD%E4%B8%80%E6%AC%A1%E8%AF%B4%E6%B8%85%E6%A5%9A"><span class="toc-number">1.2.</span> <span class="toc-text">1.2 所有缩写和术语一次说清楚</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#2-Attention-%E7%9A%84%E5%AE%8C%E6%95%B4%E6%B5%81%E7%A8%8B%EF%BC%88%E7%9C%8B%E6%87%82%E6%AF%8F%E4%B8%AA%E5%85%AC%E5%BC%8F%EF%BC%89"><span class="toc-number">2.</span> <span class="toc-text">2. Attention 的完整流程（看懂每个公式）</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#2-1-%E8%BE%93%E5%85%A5%EF%BC%9A%E4%B8%80%E6%AE%B5%E6%96%87%E6%9C%AC%E5%8F%98%E6%88%90%E4%BA%86%E4%BB%80%E4%B9%88"><span class="toc-number">2.1.</span> <span class="toc-text">2.1 输入：一段文本变成了什么</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-2-%E7%AC%AC%E4%B8%80%E6%AD%A5%EF%BC%9A%E7%94%9F%E6%88%90-Q%E3%80%81K%E3%80%81V-%E4%B8%89%E4%B8%AA%E7%9F%A9%E9%98%B5"><span class="toc-number">2.2.</span> <span class="toc-text">2.2 第一步：生成 Q、K、V 三个矩阵</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-3-%E7%AC%AC%E4%BA%8C%E6%AD%A5%EF%BC%9A%E8%AE%A1%E7%AE%97%E6%B3%A8%E6%84%8F%E5%8A%9B%E5%88%86%E6%95%B0-S"><span class="toc-number">2.3.</span> <span class="toc-text">2.3 第二步：计算注意力分数 S</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-4-%E7%AC%AC%E4%B8%89%E6%AD%A5%EF%BC%9A%E7%94%A8-softmax-%E6%8A%8A%E5%88%86%E6%95%B0%E5%8F%98%E6%88%90%E6%A6%82%E7%8E%87"><span class="toc-number">2.4.</span> <span class="toc-text">2.4 第三步：用 softmax 把分数变成概率</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-5-%E7%AC%AC%E5%9B%9B%E6%AD%A5%EF%BC%9A%E7%94%A8%E6%9D%83%E9%87%8D%E6%B1%87%E6%80%BB-V-%E5%BE%97%E5%88%B0%E8%BE%93%E5%87%BA"><span class="toc-number">2.5.</span> <span class="toc-text">2.5 第四步：用权重汇总 V 得到输出</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-6-%E5%AE%8C%E6%95%B4%E5%85%AC%E5%BC%8F%E6%80%BB%E8%A7%88"><span class="toc-number">2.6.</span> <span class="toc-text">2.6 完整公式总览</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#3-%E6%A0%87%E5%87%86-Attention-%E7%9A%84%E4%B8%A4%E5%A4%A7%E7%97%9B%E7%82%B9"><span class="toc-number">3.</span> <span class="toc-text">3. 标准 Attention 的两大痛点</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#3-1-%E7%97%9B%E7%82%B9%E4%B8%80%EF%BC%9AN%C3%97N-%E7%9F%A9%E9%98%B5%E5%90%83%E6%98%BE%E5%AD%98"><span class="toc-number">3.1.</span> <span class="toc-text">3.1 痛点一：N×N 矩阵吃显存</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-2-%E7%97%9B%E7%82%B9%E4%BA%8C%EF%BC%9AHBM-%E5%B8%A6%E5%AE%BD%E6%88%90%E4%B8%BA%E7%93%B6%E9%A2%88"><span class="toc-number">3.2.</span> <span class="toc-text">3.2 痛点二：HBM 带宽成为瓶颈</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#4-FlashAttention-%E7%9A%84%E6%A0%B8%E5%BF%83%E6%B4%9E%E5%AF%9F"><span class="toc-number">4.</span> <span class="toc-text">4. FlashAttention 的核心洞察</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#4-1-%E5%85%B3%E9%94%AE%E8%A7%82%E5%AF%9F"><span class="toc-number">4.1.</span> <span class="toc-text">4.1 关键观察</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-2-%E6%8B%A6%E8%B7%AF%E8%99%8E%EF%BC%9Asoftmax-%E9%9C%80%E8%A6%81%E2%80%9D%E5%85%A8%E8%A1%8C%E4%BF%A1%E6%81%AF%E2%80%9D"><span class="toc-number">4.2.</span> <span class="toc-text">4.2 拦路虎：softmax 需要”全行信息”</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#5-Online-Softmax-%E8%AF%A6%E8%A7%A3"><span class="toc-number">5.</span> <span class="toc-text">5. Online Softmax 详解</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#5-1-%E6%A0%B8%E5%BF%83%E6%80%9D%E6%83%B3"><span class="toc-number">5.1.</span> <span class="toc-text">5.1 核心思想</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-2-%E6%95%B0%E5%AD%A6%E6%8E%A8%E5%AF%BC"><span class="toc-number">5.2.</span> <span class="toc-text">5.2 数学推导</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-3-%E4%B8%80%E4%B8%AA%E5%85%B7%E4%BD%93%E6%95%B0%E5%80%BC%E4%BE%8B%E5%AD%90"><span class="toc-number">5.3.</span> <span class="toc-text">5.3 一个具体数值例子</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-4-%E9%A1%BA%E4%BE%BF%E6%9B%B4%E6%96%B0%E8%BE%93%E5%87%BA-O"><span class="toc-number">5.4.</span> <span class="toc-text">5.4 顺便更新输出 O</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#6-FlashAttention-%E5%AE%8C%E6%95%B4%E7%AE%97%E6%B3%95"><span class="toc-number">6.</span> <span class="toc-text">6. FlashAttention 完整算法</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#6-1-%E6%A0%B8%E5%BF%83%E6%80%9D%E8%B7%AF"><span class="toc-number">6.1.</span> <span class="toc-text">6.1 核心思路</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-2-%E4%BC%AA%E4%BB%A3%E7%A0%81"><span class="toc-number">6.2.</span> <span class="toc-text">6.2 伪代码</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-3-%E5%85%B3%E9%94%AE%E4%BC%98%E5%8A%BF"><span class="toc-number">6.3.</span> <span class="toc-text">6.3 关键优势</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#7-%E6%95%88%E6%9E%9C%E5%AF%B9%E6%AF%94"><span class="toc-number">7.</span> <span class="toc-text">7. 效果对比</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#7-1-%E6%95%B0%E5%AD%97%E4%B8%8A%E7%9A%84%E5%AF%B9%E6%AF%94%EF%BC%88N-8192%EF%BC%8Cd-128%EF%BC%89"><span class="toc-number">7.1.</span> <span class="toc-text">7.1 数字上的对比（N&#x3D;8192，d&#x3D;128）</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#7-2-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%BF%AB%E8%BF%99%E4%B9%88%E5%A4%9A"><span class="toc-number">7.2.</span> <span class="toc-text">7.2 为什么快这么多</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#8-%E7%89%88%E6%9C%AC%E6%BC%94%E8%BF%9B"><span class="toc-number">8.</span> <span class="toc-text">8. 版本演进</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#9-%E4%B8%80%E5%8F%A5%E8%AF%9D%E6%80%BB%E7%BB%93"><span class="toc-number">9.</span> <span class="toc-text">9. 一句话总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#10-%E5%BB%B6%E4%BC%B8%E9%98%85%E8%AF%BB"><span class="toc-number">10.</span> <span class="toc-text">10. 延伸阅读</span></a></li></ol>
+          </div>
+        
+      </li>
+    </ol>
+  </div>
+</div>
+
+    
+    <div class="content index py4  post-content-shell">
+        
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+  <header>
+    
+    <h1 id="post-title" class="posttitle p-name" itemprop="name headline">
+        FlashAttention 详解（零基础入门）
+    </h1>
+
+
+    <div class="meta">
+      <span class="author p-author h-card" itemprop="author" itemscope itemtype="http://schema.org/Person">
+        <span class="p-name" itemprop="name">Jimmy Ho</span>
+      </span>
+      
+    <div class="postdate">
+      
+        <time datetime="2026-07-19T06:00:00.000Z" class="dt-published" itemprop="datePublished">2026-07-19</time>
+        
+        (Updated: <time datetime="2026-07-19T06:20:00.000Z" class="dt-updated" itemprop="dateModified">2026-07-19</time>)
+        
+      
+    </div>
+
+
+      
+    <div class="article-category">
+        <i class="fa-solid fa-archive"></i>
+        <a class="category-link" href="/categories/%E8%AE%A1%E7%AE%97%E6%9C%BA/">计算机</a>
+    </div>
+
+
+      
+    <div class="article-tag">
+        <i class="fa-solid fa-tag"></i>
+        <a class="p-category" href="/tags/AI/" rel="tag">AI</a>, <a class="p-category" href="/tags/FlashAttention/" rel="tag">FlashAttention</a>, <a class="p-category" href="/tags/GPU/" rel="tag">GPU</a>, <a class="p-category" href="/tags/LLM/" rel="tag">LLM</a>, <a class="p-category" href="/tags/Transformer/" rel="tag">Transformer</a>
+    </div>
+
+
+    </div>
+  </header>
+  
+
+  <div class="content e-content" itemprop="articleBody">
+    <!-- post-notices:start -->
+<div class="note note-warning post-notice post-notice-ai">
+  <p>本文由 AI 生成，内容可能存在错误或不准确之处，请结合可靠来源核验后再作参考。</p>
+</div>
+<!-- post-notices:end -->
+<blockquote class="markdown-alert markdown-alert-note"><p class="markdown-alert-title">NOTE</p><p><strong>阅读目标</strong>：完全不懂大模型的人，看完能搞清楚：</p>
+<ul>
+<li>Attention（注意力机制）是什么、怎么算</li>
+<li>为什么标准 Attention 在长文本上又慢又耗显存</li>
+<li>FlashAttention 做了什么改动、为什么能快几倍</li>
+<li>每一个公式、每一个缩写都解释清楚</li>
+</ul>
+</blockquote>
+<span id="more"></span>
+
+<h2 id="1-先搞清楚这些基础概念"><a href="#1-先搞清楚这些基础概念" class="headerlink" title="1. 先搞清楚这些基础概念"></a>1. 先搞清楚这些基础概念</h2><h3 id="1-1-大语言模型里的”Attention”是什么"><a href="#1-1-大语言模型里的”Attention”是什么" class="headerlink" title="1.1 大语言模型里的”Attention”是什么"></a>1.1 大语言模型里的”Attention”是什么</h3><p>想象你在读一个句子：<strong>“小明把书放在桌上，他走了。”</strong></p>
+<p>当你读到”<strong>他</strong>“时，你的大脑会自动”看回去”——<strong>“他”指的是小明</strong>。这个”看回去、找相关信息”的动作，就叫<strong>注意力（Attention）</strong>。</p>
+<p>大语言模型处理文本的每一个词时，都要做类似的事：</p>
+<ul>
+<li>看当前这个词</li>
+<li>扫视前面所有词</li>
+<li>决定”要给前面每个词分配多少注意力”</li>
+<li>用分配好的权重，把前面词的信息加权汇总</li>
+</ul>
+<p><strong>Attention 机制就是这个”扫视 + 加权汇总”的数学公式实现。</strong></p>
+<h3 id="1-2-所有缩写和术语一次说清楚"><a href="#1-2-所有缩写和术语一次说清楚" class="headerlink" title="1.2 所有缩写和术语一次说清楚"></a>1.2 所有缩写和术语一次说清楚</h3><table>
+<thead>
+<tr>
+<th>缩写 &#x2F; 符号</th>
+<th>英文全称</th>
+<th>中文含义</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>LLM</strong></td>
+<td>Large Language Model</td>
+<td>大语言模型</td>
+<td>GPT、Llama、Qwen 都是</td>
+</tr>
+<tr>
+<td><strong>Transformer</strong></td>
+<td>-</td>
+<td>变换器（模型架构名）</td>
+<td>现代 LLM 的基础架构，核心就是 Attention</td>
+</tr>
+<tr>
+<td><strong>Token</strong></td>
+<td>-</td>
+<td>词元</td>
+<td>文本被切成的最小单位，一个汉字或一个英文单词通常是 1-2 个 token</td>
+</tr>
+<tr>
+<td><strong>N</strong></td>
+<td>sequence length</td>
+<td>序列长度</td>
+<td>一句话有多少个 token</td>
+</tr>
+<tr>
+<td><strong>d</strong></td>
+<td>dimension</td>
+<td>维度</td>
+<td>每个 token 用多长的向量表示（常见 64 &#x2F; 128）</td>
+</tr>
+<tr>
+<td><strong>Q</strong></td>
+<td>Query</td>
+<td>查询</td>
+<td>“我想问什么”</td>
+</tr>
+<tr>
+<td><strong>K</strong></td>
+<td>Key</td>
+<td>键</td>
+<td>“我能被问什么”</td>
+</tr>
+<tr>
+<td><strong>V</strong></td>
+<td>Value</td>
+<td>值</td>
+<td>“我实际提供什么信息”</td>
+</tr>
+<tr>
+<td><strong>S</strong></td>
+<td>Score</td>
+<td>注意力分数</td>
+<td>Q 和 K 匹配度，越高越相关</td>
+</tr>
+<tr>
+<td><strong>P</strong></td>
+<td>Probability</td>
+<td>注意力权重</td>
+<td>把 S 归一化成 0-1 的概率</td>
+</tr>
+<tr>
+<td><strong>O</strong></td>
+<td>Output</td>
+<td>输出</td>
+<td>最终加权汇总的结果</td>
+</tr>
+<tr>
+<td><strong>MatMul</strong></td>
+<td>Matrix Multiplication</td>
+<td>矩阵乘法</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>softmax</strong></td>
+<td>-</td>
+<td>归一化指数函数</td>
+<td>把一堆数变成加起来等于 1 的概率</td>
+</tr>
+<tr>
+<td><strong>GPU</strong></td>
+<td>Graphics Processing Unit</td>
+<td>图形处理器</td>
+<td>大模型主要在 GPU 上跑</td>
+</tr>
+<tr>
+<td><strong>HBM</strong></td>
+<td>High Bandwidth Memory</td>
+<td>高带宽内存</td>
+<td>GPU 的”大仓库”内存，容量大但慢（相对）</td>
+</tr>
+<tr>
+<td><strong>SRAM</strong></td>
+<td>Static RAM</td>
+<td>静态随机存储</td>
+<td>GPU 里的”小厨房”内存，容量小但极快</td>
+</tr>
+<tr>
+<td><strong>FP16</strong></td>
+<td>Floating Point 16-bit</td>
+<td>16 位浮点数</td>
+<td>每个数占 2 字节</td>
+</tr>
+<tr>
+<td><strong>FP32</strong></td>
+<td>Floating Point 32-bit</td>
+<td>32 位浮点数</td>
+<td>每个数占 4 字节</td>
+</tr>
+<tr>
+<td><strong>FLOPs</strong></td>
+<td>Floating Point Operations</td>
+<td>浮点运算次数</td>
+<td>衡量计算量的单位</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="2-Attention-的完整流程（看懂每个公式）"><a href="#2-Attention-的完整流程（看懂每个公式）" class="headerlink" title="2. Attention 的完整流程（看懂每个公式）"></a>2. Attention 的完整流程（看懂每个公式）</h2><h3 id="2-1-输入：一段文本变成了什么"><a href="#2-1-输入：一段文本变成了什么" class="headerlink" title="2.1 输入：一段文本变成了什么"></a>2.1 输入：一段文本变成了什么</h3><p>假设句子有 $N&#x3D;4$ 个 token，每个 token 用 $d&#x3D;3$ 维向量表示。输入矩阵为：</p>
+<p>$$<br>X&#x3D;<br>\begin{bmatrix}<br>x_{11} &amp; x_{12} &amp; x_{13} \\<br>x_{21} &amp; x_{22} &amp; x_{23} \\<br>x_{31} &amp; x_{32} &amp; x_{33} \\<br>x_{41} &amp; x_{42} &amp; x_{43}<br>\end{bmatrix}<br>\in \mathbb{R}^{N\times d}<br>$$</p>
+<ul>
+<li>每一<strong>行</strong>代表一个 token 的向量表示</li>
+<li>共 4 行（4 个 token），每行 3 维</li>
+<li>数学符号写作 $X\in\mathbb{R}^{N\times d}$，读作“$X$ 是 $N$ 行 $d$ 列的实数矩阵”</li>
+</ul>
+<h3 id="2-2-第一步：生成-Q、K、V-三个矩阵"><a href="#2-2-第一步：生成-Q、K、V-三个矩阵" class="headerlink" title="2.2 第一步：生成 Q、K、V 三个矩阵"></a>2.2 第一步：生成 Q、K、V 三个矩阵</h3><p>每个 token 会被映射成三个不同的向量：Query、Key、Value。</p>
+<p>$$<br>\begin{aligned}<br>Q &amp;&#x3D; XW_Q, \\<br>K &amp;&#x3D; XW_K, \\<br>V &amp;&#x3D; XW_V.<br>\end{aligned}<br>$$</p>
+<p><strong>逐个解释</strong>：</p>
+<ul>
+<li><strong>$X$</strong>：输入矩阵，形状为 $[N,d]$，每行对应一个 token</li>
+<li><strong>$W_Q,W_K,W_V$</strong>：三个<strong>可学习的权重矩阵</strong>（训练时学出来的），形状均为 $[d,d]$</li>
+<li><strong>$Q,K,V$</strong>：运算结果，形状均为 $[N,d]$</li>
+</ul>
+<p><strong>形象理解</strong>：</p>
+<ul>
+<li><strong>Q（Query）</strong>：像每个 token 伸出的”触角”，代表”我在找什么”</li>
+<li><strong>K（Key）</strong>：像每个 token 贴的”标签”，代表”我是什么”</li>
+<li><strong>V（Value）</strong>：代表”如果你关注我，你能得到什么信息”</li>
+</ul>
+<h3 id="2-3-第二步：计算注意力分数-S"><a href="#2-3-第二步：计算注意力分数-S" class="headerlink" title="2.3 第二步：计算注意力分数 S"></a>2.3 第二步：计算注意力分数 S</h3><p>用 <strong>Q</strong> 去和所有 <strong>K</strong> 做匹配：</p>
+<p>$$<br>S&#x3D;\frac{QK^\mathsf{T}}{\sqrt{d}}.<br>$$</p>
+<p><strong>逐个解释</strong>：</p>
+<ul>
+<li><strong>$Q$</strong>：形状为 $[N,d]$</li>
+<li><strong>$K^\mathsf{T}$</strong>：$K$ 的转置（行列互换），形状为 $[d,N]$</li>
+<li><strong>$QK^\mathsf{T}$</strong>：矩阵乘法（MatMul），结果形状为 $[N,N]$</li>
+<li><strong>$\sqrt{d}$</strong>：缩放因子，防止数值过大导致后续 softmax 饱和</li>
+<li><strong>$S$</strong>：注意力分数矩阵，形状为 $[N,N]$</li>
+</ul>
+<p><strong>$S$ 里的每个元素 $S_{ij}$ 表示什么？</strong></p>
+<p>$$<br>S_{ij}&#x3D;\frac{Q_i\cdot K_j}{\sqrt{d}},<br>$$</p>
+<p>它表示“<strong>第 $i$ 个 token 对第 $j$ 个 token 的关注度（尚未归一化）</strong>”。</p>
+<p>举例（$N&#x3D;4$）：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>token 1</th>
+<th>token 2</th>
+<th>token 3</th>
+<th>token 4</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>token 1 对…的分数</strong></td>
+<td>0.8</td>
+<td>0.2</td>
+<td>0.5</td>
+<td>0.1</td>
+</tr>
+<tr>
+<td><strong>token 2 对…的分数</strong></td>
+<td>0.3</td>
+<td>0.9</td>
+<td>0.2</td>
+<td>0.4</td>
+</tr>
+<tr>
+<td><strong>token 3 对…的分数</strong></td>
+<td>0.1</td>
+<td>0.4</td>
+<td>0.7</td>
+<td>0.6</td>
+</tr>
+<tr>
+<td><strong>token 4 对…的分数</strong></td>
+<td>0.2</td>
+<td>0.3</td>
+<td>0.5</td>
+<td>0.8</td>
+</tr>
+</tbody></table>
+<p>整张表就是 $S$ 矩阵，是一个 $N\times N$（这里为 $4\times4$）的方阵。</p>
+<h3 id="2-4-第三步：用-softmax-把分数变成概率"><a href="#2-4-第三步：用-softmax-把分数变成概率" class="headerlink" title="2.4 第三步：用 softmax 把分数变成概率"></a>2.4 第三步：用 softmax 把分数变成概率</h3><p>$$<br>P&#x3D;\operatorname{softmax}(S).<br>$$</p>
+<p><strong>softmax 的作用</strong>：把一行数字变成加起来等于 1 的概率分布。</p>
+<p>对每一行 i，softmax 公式是：</p>
+<p>$$<br>P_{ij}&#x3D;\frac{\exp(S_{ij})}{\sum_{k&#x3D;1}^{N}\exp(S_{ik})}.<br>$$</p>
+<p><strong>逐个符号解释</strong>：</p>
+<ul>
+<li><strong>$\exp(x)$</strong>：指数函数 $e^x$，其中 $e\approx2.718$</li>
+<li><strong>分子</strong>：当前元素的指数</li>
+<li><strong>分母</strong>：这一行所有元素指数的总和</li>
+<li><strong>$\sum$</strong>：连加求和符号，$\sum_{k&#x3D;1}^{N}$ 表示“对 $k$ 从 $1$ 累加到 $N$”</li>
+<li><strong>$P_{ij}$</strong>：归一化后的概率，满足每行元素之和为 $1$</li>
+</ul>
+<p><strong>数值稳定性问题（重要！）</strong>：直接计算 $\exp$ 可能溢出（例如 $\exp(1000)$ 是天文数字），实际使用的公式为：</p>
+<p>$$<br>P_{ij}&#x3D;\frac{\exp(S_{ij}-m_i)}{\sum_{k&#x3D;1}^{N}\exp(S_{ik}-m_i)}.<br>$$</p>
+<p>其中 $m_i&#x3D;\max_k S_{ik}$ 是第 $i$ 行的最大值。</p>
+<p>减去最大值后结果不变（数学上恒等），但可以保证 $\exp$ 的输入值不大于 $0$，从而避免溢出。<strong>这点后面讲 FlashAttention 时会很关键</strong>。</p>
+<h3 id="2-5-第四步：用权重汇总-V-得到输出"><a href="#2-5-第四步：用权重汇总-V-得到输出" class="headerlink" title="2.5 第四步：用权重汇总 V 得到输出"></a>2.5 第四步：用权重汇总 V 得到输出</h3><p>$$<br>O&#x3D;PV.<br>$$</p>
+<ul>
+<li><strong>$P$</strong>：形状为 $[N,N]$，表示注意力权重</li>
+<li><strong>$V$</strong>：形状为 $[N,d]$，表示值矩阵</li>
+<li><strong>$O$</strong>：形状为 $[N,d]$，表示最终输出</li>
+</ul>
+<p><strong>$O$ 的每一行 $O_i$ 是什么？</strong></p>
+<p>$$<br>O_i&#x3D;\sum_{j&#x3D;1}^{N}P_{ij}V_j.<br>$$</p>
+<p>它表示“<strong>第 $i$ 个 token 的输出等于所有 token 的 $V$ 按照注意力权重进行加权求和</strong>”。</p>
+<h3 id="2-6-完整公式总览"><a href="#2-6-完整公式总览" class="headerlink" title="2.6 完整公式总览"></a>2.6 完整公式总览</h3><p>$$<br>\operatorname{Attention}(Q,K,V)<br>&#x3D;\operatorname{softmax}\left(\frac{QK^\mathsf{T}}{\sqrt{d}}\right)V.<br>$$</p>
+<blockquote class="markdown-alert markdown-alert-tip"><p class="markdown-alert-title">TIP</p><p><strong>整个过程可以用三步概括</strong>：</p>
+<ol>
+<li><strong>打分</strong>：$S &#x3D; QK^\mathsf{T}&#x2F;\sqrt{d}$，得到 $N\times N$ 的分数矩阵</li>
+<li><strong>归一化</strong>：$P &#x3D; \operatorname{softmax}(S)$，每行元素之和为 $1$</li>
+<li><strong>汇总</strong>：$O &#x3D; PV$，按权重对 $V$ 加权求和</li>
+</ol>
+</blockquote>
+<hr>
+<h2 id="3-标准-Attention-的两大痛点"><a href="#3-标准-Attention-的两大痛点" class="headerlink" title="3. 标准 Attention 的两大痛点"></a>3. 标准 Attention 的两大痛点</h2><h3 id="3-1-痛点一：N×N-矩阵吃显存"><a href="#3-1-痛点一：N×N-矩阵吃显存" class="headerlink" title="3.1 痛点一：N×N 矩阵吃显存"></a>3.1 痛点一：N×N 矩阵吃显存</h3><p><strong>$N$ 是序列长度</strong>。下面列出 $S$ 和 $P$ 这两个中间矩阵的大小：</p>
+<table>
+<thead>
+<tr>
+<th>序列长度 N</th>
+<th>S 矩阵大小（FP16）</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>512</td>
+<td>0.5 MB</td>
+<td>尚可</td>
+</tr>
+<tr>
+<td>2,048</td>
+<td>8 MB</td>
+<td>OK</td>
+</tr>
+<tr>
+<td>4,096</td>
+<td>32 MB</td>
+<td>开始紧张</td>
+</tr>
+<tr>
+<td>8,192</td>
+<td>128 MB</td>
+<td>紧张</td>
+</tr>
+<tr>
+<td>16,384</td>
+<td>512 MB</td>
+<td>非常紧张</td>
+</tr>
+<tr>
+<td>32,768</td>
+<td><strong>2 GB</strong></td>
+<td>爆炸</td>
+</tr>
+<tr>
+<td>131,072</td>
+<td><strong>32 GB</strong></td>
+<td>直接 OOM</td>
+</tr>
+</tbody></table>
+<p>计算方式为 $N\times N\times 2$ 字节（FP16）。</p>
+<p>每个 Attention 层都要这么一个矩阵，而一个 LLM 有几十层——总显存需求随 N 平方增长，这就是为什么早期 Transformer 根本跑不了长文本。</p>
+<h3 id="3-2-痛点二：HBM-带宽成为瓶颈"><a href="#3-2-痛点二：HBM-带宽成为瓶颈" class="headerlink" title="3.2 痛点二：HBM 带宽成为瓶颈"></a>3.2 痛点二：HBM 带宽成为瓶颈</h3><p>GPU 的内存有两种：</p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>位置</th>
+<th>容量</th>
+<th>速度</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>HBM</strong></td>
+<td>显存条</td>
+<td>几十 GB</td>
+<td>~ 1-2 TB&#x2F;s</td>
+</tr>
+<tr>
+<td><strong>SRAM</strong></td>
+<td>在芯片上</td>
+<td>几十 MB（超小）</td>
+<td>~ 10-20 TB&#x2F;s</td>
+</tr>
+</tbody></table>
+<p><strong>HBM 虽然叫”高带宽内存”，但比 SRAM 还是慢 10 倍。</strong></p>
+<p>标准 Attention 在 HBM 和 SRAM 之间来回搬数据：</p>
+<ol>
+<li>计算 $S&#x3D;QK^\mathsf{T}&#x2F;\sqrt{d}$，再将 $N\times N$ 的 $S$ 写入 HBM。</li>
+<li>从 HBM 读取 $S$，计算 $P&#x3D;\operatorname{softmax}(S)$，再将 $P$ 写回 HBM。</li>
+<li>从 HBM 读取 $P$，计算 $O&#x3D;PV$，最后写回 $O$。</li>
+</ol>
+<p><strong>每一步都要读写 $N\times N$ 的大矩阵，HBM 带宽被压满</strong>。而此时 GPU 的计算单元（MAC 阵列）<strong>大部分时间在等数据</strong>，算力利用率很低。</p>
+<blockquote class="markdown-alert markdown-alert-important"><p class="markdown-alert-title">IMPORTANT</p><p><strong>核心问题</strong>：Attention 不是“算得慢”，而是“<strong>数据搬得慢</strong>”。典型场景下 GPU 计算单元利用率只有 10–30%。</p>
+</blockquote>
+<hr>
+<h2 id="4-FlashAttention-的核心洞察"><a href="#4-FlashAttention-的核心洞察" class="headerlink" title="4. FlashAttention 的核心洞察"></a>4. FlashAttention 的核心洞察</h2><h3 id="4-1-关键观察"><a href="#4-1-关键观察" class="headerlink" title="4.1 关键观察"></a>4.1 关键观察</h3><blockquote class="markdown-alert markdown-alert-important"><p class="markdown-alert-title">IMPORTANT</p><p>我们最终只需要 $O &#x3D; PV$ 这个形状为 $[N,d]$ 的结果。中间形状为 $[N,N]$ 的 $S$ 和 $P$ 矩阵，其实不需要完整存在。</p>
+</blockquote>
+<p>如果我们能一边算一点 S、一边做 softmax、一边和对应的 V 相乘，<strong>中间结果全部待在 SRAM 里，永不写回 HBM</strong>——那 HBM 流量就能大幅降低。</p>
+<h3 id="4-2-拦路虎：softmax-需要”全行信息”"><a href="#4-2-拦路虎：softmax-需要”全行信息”" class="headerlink" title="4.2 拦路虎：softmax 需要”全行信息”"></a>4.2 拦路虎：softmax 需要”全行信息”</h3><p>问题来了：</p>
+<p>$$<br>P_{ij}&#x3D;\frac{\exp(S_{ij}-m_i)}{\sum_{k&#x3D;1}^{N}\exp(S_{ik}-m_i)}.<br>$$</p>
+<p>要算这个，你得知道：</p>
+<ul>
+<li><strong>$m_i$</strong>：整行 $S$ 的最大值</li>
+<li><strong>分母</strong>：整行 S 的指数之和</li>
+</ul>
+<p><strong>你必须看到整行才能算 softmax</strong>。如果只有前半行，算出来的 softmax 是错的。</p>
+<p>这个约束让朴素的”分块算法”行不通——FlashAttention 的核心贡献就是解决了这个问题，用的是 <strong>Online Softmax</strong> 技巧。</p>
+<hr>
+<h2 id="5-Online-Softmax-详解"><a href="#5-Online-Softmax-详解" class="headerlink" title="5. Online Softmax 详解"></a>5. Online Softmax 详解</h2><h3 id="5-1-核心思想"><a href="#5-1-核心思想" class="headerlink" title="5.1 核心思想"></a>5.1 核心思想</h3><p><strong>边看数据边维护”目前为止的 max 和 sum”，新数据来的时候修正之前的结果</strong>。</p>
+<h3 id="5-2-数学推导"><a href="#5-2-数学推导" class="headerlink" title="5.2 数学推导"></a>5.2 数学推导</h3><p>假设一整行有 $N$ 个数，我们分两块来看：前一块记作 $x^{(1)}$，后一块记作 $x^{(2)}$。</p>
+<p><strong>处理完第一块后</strong>，我们维护两个统计量：</p>
+<p>$$<br>\begin{aligned}<br>m^{(1)} &amp;&#x3D; \max_j x_j^{(1)}, \\<br>\ell^{(1)} &amp;&#x3D; \sum_j \exp\left(x_j^{(1)}-m^{(1)}\right).<br>\end{aligned}<br>$$</p>
+<p><strong>第二块到来时</strong>，我们想要的新统计量是 <strong>“整个（第一块+第二块）的 max 和 sum”</strong>：</p>
+<p>新的 max：</p>
+<p>$$<br>m^{(2)}&#x3D;\max\left(m^{(1)},\max_j x_j^{(2)}\right).<br>$$</p>
+<p>新的 sum（这里是关键）：</p>
+<p>$$<br>\ell^{(2)}<br>&#x3D;\underset{\text{修正旧的 sum}}{\underbrace{\ell^{(1)}\exp\left(m^{(1)}-m^{(2)}\right)}}<br>+\underset{\text{加入新块贡献}}{\underbrace{\sum_{j}\exp\left(x_{j}^{(2)}-m^{(2)}\right)}}.<br>$$</p>
+<p><strong>为什么是这个公式？</strong> 因为旧的 $\ell^{(1)}$ 是<strong>以旧的最大值为基准</strong>计算的（即每项减去 $m^{(1)}$），现在需要切换到以新最大值为基准。对单项做如下变换：</p>
+<p>$$<br>\begin{aligned}<br>\exp\left(x_j-m^{(1)}\right)<br>&amp;&#x3D;\exp\left(x_j-m^{(2)}+m^{(2)}-m^{(1)}\right) \\<br>&amp;&#x3D;\exp\left(x_j-m^{(2)}\right)\exp\left(m^{(2)}-m^{(1)}\right).<br>\end{aligned}<br>$$</p>
+<p>因此，旧的 sum 乘以 $\exp\left(m^{(1)}-m^{(2)}\right)$，就能修正到新的基准。</p>
+<blockquote class="markdown-alert markdown-alert-warning"><p class="markdown-alert-title">WARNING</p><p>这个转换是<strong>精确的</strong>，不是近似；其数值结果与一次性处理全部数据完全相同。</p>
+</blockquote>
+<h3 id="5-3-一个具体数值例子"><a href="#5-3-一个具体数值例子" class="headerlink" title="5.3 一个具体数值例子"></a>5.3 一个具体数值例子</h3><p>假设一行共有 $4$ 个数 $[1,3,2,4]$，分两块处理，每块包含 $2$ 个数。</p>
+<p><strong>一次性算（参考答案）</strong>：</p>
+<ul>
+<li>$\max(x)&#x3D;4$</li>
+<li>减去最大值后得到 $[-3,-1,-2,0]$</li>
+<li>取指数后得到 $[0.0498,0.3679,0.1353,1.0]$</li>
+<li>指数之和约为 $1.553$</li>
+<li>softmax 结果约为 $[0.032,0.237,0.087,0.644]$</li>
+</ul>
+<p><strong>Online 算</strong>：</p>
+<p><strong>第一块 $[1,3]$：</strong></p>
+<ul>
+<li>$m^{(1)}&#x3D;3$</li>
+<li>$\ell^{(1)}&#x3D;\exp(1-3)+\exp(3-3)&#x3D;0.1353+1.0&#x3D;1.1353$</li>
+</ul>
+<p><strong>第二块 $[2,4]$：</strong></p>
+<ul>
+<li>新的最大值为 $m^{(2)}&#x3D;\max(3,4)&#x3D;4$</li>
+<li>修正旧的 sum：$1.1353\times\exp(3-4)&#x3D;1.1353\times0.3679&#x3D;0.4178$</li>
+<li>新块贡献：$\exp(2-4)+\exp(4-4)&#x3D;0.1353+1.0&#x3D;1.1353$</li>
+<li>$\ell^{(2)}&#x3D;0.4178+1.1353&#x3D;1.5531$</li>
+</ul>
+<p>✅ <strong>1.5531 ≈ 1.553</strong>，和一次性算的结果完全一致，说明 online 算法是精确的。</p>
+<h3 id="5-4-顺便更新输出-O"><a href="#5-4-顺便更新输出-O" class="headerlink" title="5.4 顺便更新输出 O"></a>5.4 顺便更新输出 O</h3><p>Attention 不止算 softmax，还要乘以 V。Online 地更新 O 的公式：</p>
+<p>设当前已经处理到第 $i$ 个 tile，并维护累积量 $O^{(i)}$：</p>
+<p>$$<br>O^{(i)}<br>&#x3D;\frac{<br>O^{(i-1)}\ell^{(i-1)}\exp\left(m^{(i-1)}-m^{(i)}\right)<br>+\exp\left(S^{(i)}-m^{(i)}\right)V^{(i)}<br>}{\ell^{(i)}}.<br>$$</p>
+<p>看着复杂，本质就三件事：</p>
+<ol>
+<li>把<strong>旧的 $O$ 重新缩放</strong>，使用与更新 $\ell$ 相同的 $\exp\left(m^{(i-1)}-m^{(i)}\right)$ 修正因子</li>
+<li>加上<strong>当前 tile 的贡献</strong> $\exp\left(S^{(i)}-m^{(i)}\right)V^{(i)}$</li>
+<li>使用新的 $\ell$ 归一化</li>
+</ol>
+<hr>
+<h2 id="6-FlashAttention-完整算法"><a href="#6-FlashAttention-完整算法" class="headerlink" title="6. FlashAttention 完整算法"></a>6. FlashAttention 完整算法</h2><h3 id="6-1-核心思路"><a href="#6-1-核心思路" class="headerlink" title="6.1 核心思路"></a>6.1 核心思路</h3><ul>
+<li><strong>Q 按行切块</strong>（外层循环）</li>
+<li><strong>K, V 按行切块</strong>（内层循环）</li>
+<li>每个 Q 块在 SRAM 里常驻，扫一遍所有 K&#x2F;V 块</li>
+<li>维护 m, ℓ, O 三个累积量，online 更新</li>
+<li>S 和 P 矩阵<strong>永远不完整出现</strong>，只有小 tile 大小</li>
+</ul>
+<h3 id="6-2-伪代码"><a href="#6-2-伪代码" class="headerlink" title="6.2 伪代码"></a>6.2 伪代码</h3><figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">## 输入：Q, K, V ∈ [N, d]，都在 HBM</span></span><br><span class="line"><span class="comment">## 输出：O ∈ [N, d]</span></span><br><span class="line"></span><br><span class="line"><span class="comment">## 分块大小（能装进 SRAM 即可）</span></span><br><span class="line">B_q = <span class="number">64</span>   <span class="comment"># Q 每块行数</span></span><br><span class="line">B_k = <span class="number">64</span>   <span class="comment"># K/V 每块行数</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> i <span class="keyword">in</span> <span class="built_in">range</span>(N // B_q):                          <span class="comment"># 外层：Q 块</span></span><br><span class="line">    Q_i = 从 HBM 读取 Q 的第 i 块  [B_q, d]        <span class="comment"># 一次 HBM 读</span></span><br><span class="line">    O_i = zeros(B_q, d)                            <span class="comment"># SRAM 里初始化</span></span><br><span class="line">    m_i = -infinity                                <span class="comment"># 当前最大值</span></span><br><span class="line">    l_i = <span class="number">0</span>                                        <span class="comment"># 当前 sum</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> j <span class="keyword">in</span> <span class="built_in">range</span>(N // B_k):                      <span class="comment"># 内层：K, V 块</span></span><br><span class="line">        K_j = 从 HBM 读取 K 的第 j 块  [B_k, d]</span><br><span class="line">        V_j = 从 HBM 读取 V 的第 j 块  [B_k, d]</span><br><span class="line"></span><br><span class="line">        <span class="comment"># 在 SRAM 里完成所有计算</span></span><br><span class="line">        S_ij = Q_i @ K_j.T / sqrt(d)               <span class="comment"># [B_q, B_k]</span></span><br><span class="line">        m_ij = <span class="built_in">max</span>(S_ij, axis=-<span class="number">1</span>)                  <span class="comment"># 当前块的 max</span></span><br><span class="line"></span><br><span class="line">        m_new = <span class="built_in">max</span>(m_i, m_ij)                     <span class="comment"># 新 max</span></span><br><span class="line">        P_ij = exp(S_ij - m_new)                   <span class="comment"># 局部 softmax 分子</span></span><br><span class="line">        l_new = l_i * exp(m_i - m_new) + <span class="built_in">sum</span>(P_ij)</span><br><span class="line"></span><br><span class="line">        <span class="comment"># 更新 O</span></span><br><span class="line">        O_i = O_i * (l_i / l_new) * exp(m_i - m_new) + (P_ij @ V_j) / l_new</span><br><span class="line"></span><br><span class="line">        m_i, l_i = m_new, l_new</span><br><span class="line"></span><br><span class="line">    把 O_i 写回 HBM                                <span class="comment"># 一次 HBM 写</span></span><br></pre></td></tr></table></figure>
+
+<h3 id="6-3-关键优势"><a href="#6-3-关键优势" class="headerlink" title="6.3 关键优势"></a>6.3 关键优势</h3><ul>
+<li><strong>$S$ 和 $P$ 从未以 $[N,N]$ 的完整形态存在</strong>，只有 $[B_q,B_k]$ 的小 tile</li>
+<li><strong>HBM 读写复杂度</strong>：$O(Nd)$（只读写 $Q$、$K$、$V$、$O$），<strong>不再是 $O(N^2)$</strong></li>
+<li><strong>SRAM 充分利用</strong>：所有中间计算都在快内存里</li>
+</ul>
+<hr>
+<h2 id="7-效果对比"><a href="#7-效果对比" class="headerlink" title="7. 效果对比"></a>7. 效果对比</h2><h3 id="7-1-数字上的对比（N-8192，d-128）"><a href="#7-1-数字上的对比（N-8192，d-128）" class="headerlink" title="7.1 数字上的对比（N&#x3D;8192，d&#x3D;128）"></a>7.1 数字上的对比（N&#x3D;8192，d&#x3D;128）</h3><table>
+<thead>
+<tr>
+<th>指标</th>
+<th>原始 Attention</th>
+<th>FlashAttention</th>
+<th>改善</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>S 矩阵显存占用</strong></td>
+<td>128 MB &#x2F; head</td>
+<td>0（不存）</td>
+<td>∞</td>
+</tr>
+<tr>
+<td><strong>HBM 读写量</strong></td>
+<td>~ 540 MB</td>
+<td>~ 35 MB</td>
+<td><strong>15×</strong> 少</td>
+</tr>
+<tr>
+<td><strong>实际速度（A100 GPU）</strong></td>
+<td>基准</td>
+<td>2-4× 快</td>
+<td><strong>快 3 倍</strong></td>
+</tr>
+<tr>
+<td><strong>可用最大上下文</strong></td>
+<td>2K-8K</td>
+<td>32K+</td>
+<td><strong>4×</strong> 长</td>
+</tr>
+</tbody></table>
+<h3 id="7-2-为什么快这么多"><a href="#7-2-为什么快这么多" class="headerlink" title="7.2 为什么快这么多"></a>7.2 为什么快这么多</h3><blockquote class="markdown-alert markdown-alert-tip"><p class="markdown-alert-title">TIP</p><p><strong>Attention 本来是“memory-bound”（内存带宽瓶颈）</strong>，不是“compute-bound”（算力瓶颈）。<br>FlashAttention 没增加计算量，甚至<strong>略微增加了一点点</strong>（重复计算 exp），但大幅减少了 HBM 流量——于是带宽瓶颈解除，GPU 的计算单元终于跑满了。</p>
+</blockquote>
+<hr>
+<h2 id="8-版本演进"><a href="#8-版本演进" class="headerlink" title="8. 版本演进"></a>8. 版本演进</h2><table>
+<thead>
+<tr>
+<th>版本</th>
+<th>年份</th>
+<th>核心改进</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>FlashAttention-1</strong></td>
+<td>2022</td>
+<td>首创 tiling + online softmax，比原生 attention 快 2-4×</td>
+</tr>
+<tr>
+<td><strong>FlashAttention-2</strong></td>
+<td>2023</td>
+<td>换了循环顺序（Q 在外层），warp 级并行更好，比 v1 再快 2×</td>
+</tr>
+<tr>
+<td><strong>FlashAttention-3</strong></td>
+<td>2024</td>
+<td>针对 H100 异步 GEMM + FP8 支持，又快 1.5-2×</td>
+</tr>
+</tbody></table>
+<p>三个版本<strong>算法骨架都一样</strong>，区别在于针对不同硬件（A100 &#x2F; H100）的微架构做了精细调优。</p>
+<hr>
+<h2 id="9-一句话总结"><a href="#9-一句话总结" class="headerlink" title="9. 一句话总结"></a>9. 一句话总结</h2><blockquote class="markdown-alert markdown-alert-important"><p class="markdown-alert-title">IMPORTANT</p><p><strong>FlashAttention 的核心贡献</strong>：<br>证明了“Attention 的 $N\times N$ 矩阵不需要物化”——通过<strong>分块计算 + Online Softmax</strong>，中间结果全部保留在 SRAM 里，只读写最终需要的 $Q$、$K$、$V$、$O$。<br><strong>同一块 GPU、同一个模型、同一个数学定义，只改 kernel，就快了 2-4 倍、省了几十倍显存</strong>。<br>这是过去五年 Transformer 加速里<strong>最有影响力的算法工程突破</strong>，现在是 PyTorch、vLLM、TensorRT-LLM 的默认实现。</p>
+</blockquote>
+<hr>
+<h2 id="10-延伸阅读"><a href="#10-延伸阅读" class="headerlink" title="10. 延伸阅读"></a>10. 延伸阅读</h2><ul>
+<li>原论文：<strong>FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness</strong>（NeurIPS 2022）</li>
+<li>作者：Tri Dao 等（现 Together AI &#x2F; Princeton）</li>
+<li>GitHub：<a target="_blank" rel="noopener" href="https://github.com/Dao-AILab/flash-attention">Dao-AILab&#x2F;flash-attention</a></li>
+</ul>
+
+  </div>
+</article>
+
+
+
+    <div class="blog-post-comments">
+        <div id="giscus_thread"
+             data-giscus-light-theme="light"
+             data-giscus-dark-theme="dark">
+            <noscript>加载评论需要在浏览器启用 JavaScript 脚本支持。</noscript>
+        </div>
+    </div>
+
+
+
+        <footer id="footer">
+  <div class="footer-main">
+    <div class="footer-left">
+      Copyright &copy;
+      
+      
+      2017-2026
+      Jimmy Ho
+      <div class="footer-version">当前呈现版本：1e36370a</div>
+    </div>
+    <div class="footer-right">
+      <nav>
+        <ul>
+          <li><a target="_blank" rel="noopener" href="https://status.jimmyho.net/">服务器状态</a></li><!--
+       --><li><a href="/sitemap.xml">网站地图</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+  <div class="footer-license">
+    除非<a target="_blank" rel="noopener" href="https://creativecommons.org/policies/#license">另有说明</a>，本网站内容均采用
+    <a target="_blank" href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh-hans" rel="license noopener">知识共享署名—非商业性使用—相同方式共享 4.0 国际许可协议（CC BY-NC-SA 4.0）</a>许可。
+  </div>
+</footer>
+
+    </div>
+    <div id="floating-menu" class="floating-menu">
+  <div id="floating-menu-actions" class="floating-menu-actions" aria-hidden="true">
+    
+      <a class="floating-action" href="/2026/07/19/kv-cache-guide/" aria-label="上一篇" title="上一篇">
+        <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+      </a>
+    
+    
+      <a class="floating-action" href="/2024/11/05/01268-linux-signal/" aria-label="下一篇" title="下一篇">
+        <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+      </a>
+    
+    <button id="floating-top" class="floating-action" type="button" aria-label="返回顶部" title="返回顶部" hidden>
+      <i class="fa-solid fa-chevron-up" aria-hidden="true"></i>
+    </button>
+    
+      <button id="floating-share-toggle" class="floating-action" type="button" aria-label="分享文章" title="分享文章" data-share-title="FlashAttention 详解（零基础入门）" data-share-url="https://blog.jimmyho.net/2026/07/19/flashattention-guide/" data-share-copied="复制成功！">
+        <i class="fa-solid fa-share-alt" aria-hidden="true"></i>
+      </button>
+    
+    <button id="theme-toggle" class="floating-action" type="button" aria-label="Switch to light mode" title="Switch to light mode">
+      <i class="fa-solid fa-sun" aria-hidden="true"></i>
+    </button>
+    <a class="floating-action" href="/" aria-label="首页" title="首页">
+      <i class="fa-solid fa-home" aria-hidden="true"></i>
+    </a>
+  </div>
+
+  <button id="floating-menu-toggle" class="theme-toggle" type="button" aria-label="菜单" title="菜单" aria-expanded="false" aria-controls="floating-menu-actions">
+    <i class="fa-solid fa-bars" aria-hidden="true"></i>
+  </button>
+  <div id="floating-share-status" class="floating-share-status" role="status" aria-live="polite"></div>
+</div>
+
+    <!-- styles -->
+
+
+
+  <link rel="preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" onload="this.onload=null;this.rel='stylesheet'"/>
+
+
+    <!-- jquery -->
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script>
+
+
+
+
+<!-- clipboard -->
+
+  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.7/clipboard.min.js" crossorigin="anonymous"></script>
+  
+  <script type="text/javascript">
+  $(function() {
+    // copy-btn HTML
+    var btn = "<span class=\"btn-copy tooltipped tooltipped-sw\" aria-label=\"复制到粘贴板！\">";
+    btn += '<i class="fa-regular fa-clone"></i>';
+    btn += '</span>';
+    // mount it!
+    $(".highlight table").before(btn);
+    var clip = new ClipboardJS('.btn-copy', {
+      text: function(trigger) {
+        return Array.from(trigger.nextElementSibling.querySelectorAll('.code')).reduce((str,it)=>str+it.innerText+'\n','')
+      }
+    });
+    clip.on('success', function(e) {
+      e.trigger.setAttribute('aria-label', "复制成功！");
+      e.clearSelection();
+    })
+  })
+  </script>
+
+
+<script src="/js/main.js"></script>
+
+
+<script src="/js/theme-toggle.js"></script>
+
+<!-- search -->
+
+<!-- Baidu Analytics -->
+
+<!-- Cloudflare Analytics -->
+
+<!-- Disqus Comments -->
+
+<!-- utterances Comments -->
+
+<!-- Giscus Comments -->
+
+    <script type="text/javascript">
+      (function(){
+          var container = document.getElementById('giscus_thread');
+          if (!container) return;
+
+          var currentTheme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+          var lightTheme = container.getAttribute('data-giscus-light-theme') || 'light';
+          var darkTheme = container.getAttribute('data-giscus-dark-theme') || 'dark';
+          var script = document.createElement('script');
+
+          script.src = 'https://giscus.app/client.js';
+          script.setAttribute('data-repo', 'jimmypury/blog-comments');
+          script.setAttribute('data-repo-id', 'R_kgDOTWOXyQ');
+          script.setAttribute('data-category', 'Announcements');
+          script.setAttribute('data-category-id', 'DIC_kwDOTWOXyc4DBCtB');
+          script.setAttribute('data-mapping', 'pathname');
+          script.setAttribute('data-strict', '1');
+          script.setAttribute('data-reactions-enabled', '1');
+          script.setAttribute('data-emit-metadata', '0');
+          script.setAttribute('data-input-position', 'bottom');
+          script.setAttribute('data-theme', currentTheme === 'light' ? lightTheme : darkTheme);
+          script.setAttribute('data-lang', 'zh-CN');
+          script.setAttribute('data-loading', 'lazy');
+          script.setAttribute('crossorigin', 'anonymous');
+          script.async = true;
+
+          container.appendChild(script);
+      }());
+  </script>
+
+
+</body>
+</html>
